@@ -430,6 +430,53 @@ class EmailQueue(Base):
     retry_count = Column(Integer, default=0)
 
 
+# ── TasteDriftSnapshot ───────────────────────────────────────────────────────
+
+class TasteDriftSnapshot(Base):  # type: ignore[misc]
+    """
+    Lightweight, flat-column snapshot used exclusively by the Longitudinal
+    Taste Drift engine (taste_evolution.py).
+
+    Design rationale
+    ----------------
+    * Uses explicit float columns (not a JSON blob) so SQLite / PostgreSQL can
+      compute averages and deltas in pure SQL — no Python post-processing.
+    * A new row is appended every time `track_taste_drift()` runs; rows are
+      NEVER updated — they are an immutable historical ledger.
+    * `source` distinguishes automated background pulls ("background_spotify")
+      from quiz-triggered snapshots ("quiz") for filtering.
+    """
+    __tablename__ = "taste_drift_snapshots"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column(GUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(
+        GUID(),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recorded_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )
+
+    # Core audio-feature floats — queryable directly in SQL
+    energy        = Column(Float, nullable=True)
+    valence       = Column(Float, nullable=True)
+    danceability  = Column(Float, nullable=True)
+    acousticness  = Column(Float, nullable=True)
+
+    # Archetype label at the time of this snapshot
+    active_archetype = Column(String(120), nullable=True)
+
+    # Where did this snapshot come from?
+    # e.g. "background_spotify", "quiz", "adaptive", "manual"
+    source = Column(String(50), nullable=True, default="background_spotify")
+
+
 # ── Table Migration & Schema Creation ─────────────────────────────────────────
 
 def migrate_database() -> None:
@@ -462,6 +509,91 @@ def _safe_import_module_tables() -> None:
             __import__(module_name)
         except Exception as exc:
             print(f"[startup.warn] Could not import {module_name} for table creation: {exc}")
+
+
+# ── Taste Drift Persistence Helpers ───────────────────────────────────────────
+
+def save_taste_drift_snapshot(
+    user_id: str,
+    energy: Optional[float] = None,
+    valence: Optional[float] = None,
+    danceability: Optional[float] = None,
+    acousticness: Optional[float] = None,
+    active_archetype: Optional[str] = None,
+    source: str = "background_spotify",
+    recorded_at: Optional[datetime] = None,
+) -> str:
+    """
+    Append a new immutable TasteDriftSnapshot row and return its UUID.
+
+    Called by ``taste_evolution.track_taste_drift()`` after each background
+    Spotify pull.  Caller provides pre-computed average feature values.
+    """
+    snap_id = str(uuid.uuid4())
+    with SessionLocal() as db:
+        snap = TasteDriftSnapshot(
+            id=snap_id,
+            user_id=user_id,
+            recorded_at=recorded_at or datetime.utcnow(),
+            energy=energy,
+            valence=valence,
+            danceability=danceability,
+            acousticness=acousticness,
+            active_archetype=active_archetype,
+            source=source,
+        )
+        db.add(snap)
+        db.commit()
+    return snap_id
+
+
+def get_taste_drift_history(
+    user_id: str,
+    limit: int = 90,
+    source: Optional[str] = None,
+) -> List[dict]:
+    """
+    Return the most recent ``limit`` TasteDriftSnapshot rows for a user,
+    ordered oldest-first (ascending ``recorded_at``) so callers receive a
+    chronological series suitable for trend plotting.
+
+    Args:
+        user_id: UUID string of the target user.
+        limit:   Maximum number of rows to fetch (default 90 ≈ 3 months weekly).
+        source:  Optional filter by snapshot source (e.g. "background_spotify").
+
+    Returns:
+        List of dicts with keys: id, user_id, recorded_at (ISO str),
+        energy, valence, danceability, acousticness, active_archetype, source.
+    """
+    with SessionLocal() as db:
+        q = (
+            db.query(TasteDriftSnapshot)
+            .filter(TasteDriftSnapshot.user_id == user_id)
+        )
+        if source:
+            q = q.filter(TasteDriftSnapshot.source == source)
+        rows = (
+            q.order_by(desc(TasteDriftSnapshot.recorded_at))
+            .limit(limit)
+            .all()
+        )
+        # Reverse so oldest is first in the returned list
+        rows = list(reversed(rows))
+        return [
+            {
+                "id": str(r.id),
+                "user_id": str(r.user_id),
+                "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+                "energy": r.energy,
+                "valence": r.valence,
+                "danceability": r.danceability,
+                "acousticness": r.acousticness,
+                "active_archetype": r.active_archetype,
+                "source": r.source,
+            }
+            for r in rows
+        ]
 
 
 # ── Domain Persistence Functions ──────────────────────────────────────────────
