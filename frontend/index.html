@@ -6014,6 +6014,7 @@ in the songs."></h2>
       if (urlToken) {
         localStorage.setItem('sonic_session', urlToken);
         urlParams.delete('session_token');
+        urlParams.delete('spotify');
         const cleanQuery = urlParams.toString();
         const cleanUrl = window.location.pathname + (cleanQuery ? '?' + cleanQuery : '') + window.location.hash;
         window.history.replaceState({}, document.title, cleanUrl);
