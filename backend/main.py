@@ -49,7 +49,8 @@ from app_database import (
     get_or_create_session_user, latest_snapshot_id_for_user,
     find_user_by_display_name, attach_email_to_session_user,
     save_generated_playlist, get_user_playlists,
-    get_or_create_user_from_spotify, update_user_genome_profile
+    get_or_create_user_from_spotify, update_user_genome_profile,
+    get_taste_drift_history,
 )
 
 from engine import (
@@ -110,6 +111,16 @@ from email_scheduler import (
     trigger_recalibration_reminders
 )
 from genome_verification import run_genome_verification
+
+# ── Taste Drift / Evolution Engine ───────────────────────────────────────────
+try:
+    from taste_evolution import track_taste_drift, DRIFT_INTERVAL_DAYS as _DRIFT_INTERVAL_DAYS
+    _TASTE_EVOLUTION_AVAILABLE = True
+except Exception as _te_err:
+    print(f"[startup.warn] taste_evolution unavailable: {_te_err}")
+    track_taste_drift = None
+    _DRIFT_INTERVAL_DAYS = 7
+    _TASTE_EVOLUTION_AVAILABLE = False
 
 # ── New Feature Module Routers ────────────────────────────────────────────────
 # Each module already declares its own router prefix; we just include them.
@@ -410,11 +421,51 @@ async def lifespan(app: FastAPI):
         print("[startup.ok] Background email reminder scheduler started")
     except Exception as e:
         print(f"[startup.warn] Failed to start email scheduler: {e}")
-    
+
+    # ── Taste Drift background loop ──────────────────────────────────────
+    _drift_stop_event: asyncio.Event = asyncio.Event()
+
+    async def _drift_loop() -> None:
+        """Repeating asyncio task: runs track_taste_drift() every DRIFT_INTERVAL_DAYS."""
+        interval_secs = _DRIFT_INTERVAL_DAYS * 86_400
+        while not _drift_stop_event.is_set():
+            try:
+                if track_taste_drift is not None:
+                    await track_taste_drift()
+            except Exception as _drift_exc:
+                print(f"[drift.warn] Unhandled error in drift loop: {_drift_exc}")
+            try:
+                await asyncio.wait_for(
+                    _drift_stop_event.wait(), timeout=float(interval_secs)
+                )
+            except asyncio.TimeoutError:
+                pass  # Normal: interval elapsed, run again
+
+    _drift_task: Optional[asyncio.Task] = None
+    if _TASTE_EVOLUTION_AVAILABLE:
+        try:
+            _drift_task = asyncio.create_task(_drift_loop())
+            print(
+                f"[startup.ok] Taste drift scheduler started "
+                f"(interval={_DRIFT_INTERVAL_DAYS}d)"
+            )
+        except Exception as _e:
+            print(f"[startup.warn] Taste drift scheduler failed to start: {_e}")
+            _drift_task = None
+
     yield  # App runs here
-    
+
     # SHUTDOWN
     print("[shutdown] Shutting down gracefully...")
+    # Stop drift loop
+    _drift_stop_event.set()
+    if _drift_task and not _drift_task.done():
+        try:
+            await asyncio.wait_for(_drift_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            _drift_task.cancel()
+    print("[shutdown.ok] Taste drift scheduler stopped")
+
     try:
         stop_email_scheduler()
         print("[shutdown.ok] Background email scheduler stopped")
@@ -1748,6 +1799,76 @@ def get_drift(payload: SessionUserPayload):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=_production_safe_detail("Drift fetch failed", e))
+
+
+@app.get("/api/evolution/{user_id}")
+def get_evolution_timeline(user_id: str, limit: int = 90, source: Optional[str] = None):
+    """
+    GET /api/evolution/{user_id}
+
+    Returns a chronological array of TasteDriftSnapshot records for the given
+    user, ordered oldest-first and formatted for frontend charting libraries.
+
+    Query params:
+      limit  — max rows to return (default 90, ≈3 months of weekly snapshots)
+      source — optional filter: "background_spotify" | "quiz" | "manual"
+
+    Response shape::
+
+        {
+          "user_id": "...",
+          "count": 12,
+          "snapshots": [
+            {
+              "date": "2026-09-12T14:00:00",
+              "energy": 0.71,
+              "valence": 0.58,
+              "danceability": 0.65,
+              "acousticness": 0.22,
+              "archetype": "The Storm Chaser",
+              "source": "background_spotify"
+            },
+            ...
+          ]
+        }
+    """
+    try:
+        user = get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        rows = get_taste_drift_history(
+            user_id=user_id,
+            limit=max(1, min(int(limit), 500)),
+            source=source or None,
+        )
+
+        snapshots = [
+            {
+                "date": r.get("recorded_at"),
+                "energy": r.get("energy"),
+                "valence": r.get("valence"),
+                "danceability": r.get("danceability"),
+                "acousticness": r.get("acousticness"),
+                "archetype": r.get("active_archetype"),
+                "source": r.get("source"),
+            }
+            for r in rows
+        ]
+
+        return {
+            "user_id": user_id,
+            "count": len(snapshots),
+            "snapshots": snapshots,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_production_safe_detail("Evolution timeline fetch failed", exc),
+        )
+
 
 
 # ════════════════════════════════════════════
