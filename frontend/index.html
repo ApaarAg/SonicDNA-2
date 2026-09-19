@@ -962,7 +962,7 @@ You."></h2>
 
   <script>
     (function(){
-      const API_URL = 'http://127.0.0.1:8010';
+      const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
       const REGION_THEMES = {
         japan: {
@@ -3985,8 +3985,10 @@ the same universe."></h2>
         if (activeRequest) return;
         activeRequest = true;
         try {
+          const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+          
           // Fetch stats
-          const statsResp = await fetch('http://127.0.0.1:8010/social/stats');
+          const statsResp = await fetch(`${API}/social/stats`);
           if (statsResp.ok) {
             const stats = await statsResp.json();
             const statBoxes = document.querySelectorAll('#scene-7 .display');
@@ -3998,7 +4000,7 @@ the same universe."></h2>
           }
 
           // Fetch constellation
-          const constResp = await fetch('http://127.0.0.1:8010/social/constellation?limit=150&min_similarity=0.4');
+          const constResp = await fetch(`${API}/social/constellation?limit=150&min_similarity=0.4`);
           if (!constResp.ok) throw new Error("Backend error");
           const data = await constResp.json();
           
@@ -4662,11 +4664,13 @@ without a passport."></h2>
 
       async function fetchLiveAtlas() {
         try {
-          const flowsResp = await fetch('http://127.0.0.1:8010/atlas/flows?limit=30');
+          const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+          
+          const flowsResp = await fetch(`${API}/atlas/flows?limit=30`);
           if (!flowsResp.ok) throw new Error("Backend flows error");
           const flowsData = await flowsResp.json();
 
-          const countriesResp = await fetch('http://127.0.0.1:8010/atlas/countries');
+          const countriesResp = await fetch(`${API}/atlas/countries`);
           if (!countriesResp.ok) throw new Error("Backend countries error");
           const countriesData = await countriesResp.json();
 
@@ -4678,7 +4682,7 @@ without a passport."></h2>
 
           drawMap(flowsData.flows || [], countriesData.countries || []);
 
-          const trendingResp = await fetch('http://127.0.0.1:8010/atlas/trending-routes?limit=3');
+          const trendingResp = await fetch(`${API}/atlas/trending-routes?limit=3`);
           if (trendingResp.ok) {
             const trendingData = await trendingResp.json();
             const ticketsContainer = document.getElementById('atlas-path-tickets');
@@ -5908,7 +5912,7 @@ in the songs."></h2>
 <!-- ======================================================================
      SONIC DNA — BACKEND INTEGRATION LAYER
      Connects every frontend surface to the real FastAPI backend.
-     Port: http://127.0.0.1:8010
+     Port: Auto-detected (8000 local, or Render URL)
      No animations, structure, or styling is changed.
      ====================================================================== -->
 <script>
@@ -5916,7 +5920,7 @@ in the songs."></h2>
   'use strict';
 
   /* ── 1. API BASE & FETCH HELPER ───────────────────────────────────────── */
-  const API = 'http://127.0.0.1:8010';
+  const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
   async function api(method, path, body) {
     try {

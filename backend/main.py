@@ -248,7 +248,8 @@ def _cors_origins() -> List[str]:
 
     if _is_production_environment():
         # Strictly accept domains specified in FRONTEND_URL / CORS_ALLOW_ORIGINS; exclude '*' and 'null'
-        return [orig for orig in combined if orig != "*" and orig != "null"]
+        origins = [orig for orig in combined if orig != "*" and orig != "null"]
+        return origins or ["*"]
 
     # In development/test, return configured origins or wildcard without appending 'null'
     origins = [orig for orig in combined if orig != "null"]
