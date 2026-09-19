@@ -5,7 +5,6 @@ import time
 from typing import List, Optional
 
 from evaluation import evaluate_playlist
-from user_profile_encoder import cosine_similarity
 
 try:
     from spotify_service_fixed import normalize_artist_name, track_fingerprint
@@ -1105,6 +1104,7 @@ class PlaylistGenerator:
         if not ranker or user_embedding is None or len(scored_tracks) < 2:
             return scored_tracks
         try:
+            from user_profile_encoder import cosine_similarity
             texts = []
             for item in scored_tracks:
                 track = item["track"]

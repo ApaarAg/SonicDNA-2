@@ -63,7 +63,15 @@ def _safe_return_to(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     parsed = urlparse(value)
-    if parsed.scheme in {"http", "https"} and parsed.hostname in {"localhost", "127.0.0.1"}:
+    allowed_hosts = {"localhost", "127.0.0.1"}
+    for env_var in ("FRONTEND_URL", "SONICDNA_FRONTEND_URL", "CORS_ALLOW_ORIGINS"):
+        env_val = os.getenv(env_var)
+        if env_val:
+            for item in env_val.split(","):
+                h = urlparse(item.strip()).hostname
+                if h:
+                    allowed_hosts.add(h)
+    if parsed.scheme in {"http", "https"} and (parsed.hostname in allowed_hosts or parsed.hostname is None):
         return value
     return None
 
@@ -116,9 +124,9 @@ class SpotifyOAuthService:
     def configured(self) -> bool:
         return bool(self.client_id and self.client_secret and self.redirect_uri)
 
-    def make_state(self, session_token: str, return_to: Optional[str] = None) -> str:
+    def make_state(self, session_token: Optional[str] = None, return_to: Optional[str] = None) -> str:
         payload = {
-            "session_token": session_token,
+            "session_token": session_token or "",
             "return_to": _safe_return_to(return_to),
             "nonce": secrets.token_urlsafe(12),
             "exp": int(time.time()) + 600,
@@ -198,6 +206,7 @@ class SpotifyOAuthService:
         return {
             "id": _clean_text(user.get("id"), 255),
             "display_name": _clean_text(user.get("display_name"), 255),
+            "email": _clean_text(user.get("email"), 255) or None,
         }
 
     def get_user_top_tracks(self, access_token: str, limit: int = 20, time_range: str = "medium_term") -> List[dict]:

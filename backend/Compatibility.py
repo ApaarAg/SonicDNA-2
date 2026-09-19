@@ -2,9 +2,8 @@
 # COMPATIBILITY ENGINE — Phase 2 Viral Loop
 # ============================================
 
-import numpy as np
+import math
 from typing import Dict, Tuple, Optional
-from sklearn.metrics.pairwise import cosine_similarity
 
 # Archetype pairing dynamics (0-7 archetypes)
 # Higher scores = better natural chemistry
@@ -113,8 +112,11 @@ class CompatibilityEngine:
         if not any(vec_a) or not any(vec_b):
             return 0.0
         
-        # Calculate cosine similarity
-        similarity = cosine_similarity([vec_a], [vec_b])[0][0]
+        # Calculate cosine similarity using pure math
+        dot = sum(x * y for x, y in zip(vec_a, vec_b))
+        norm_a = math.sqrt(sum(x * x for x in vec_a))
+        norm_b = math.sqrt(sum(y * y for y in vec_b))
+        similarity = (dot / (norm_a * norm_b)) if (norm_a * norm_b) > 1e-9 else 0.0
         
         # Convert to 0-100 scale
         return (similarity + 1) * 50  # cosine similarity is -1 to 1

@@ -1,6 +1,3 @@
-from sentence_transformers import SentenceTransformer
-import numpy as np
-
 try:
     from track_profile_builder import build_track_profile
 except Exception:
@@ -10,14 +7,26 @@ class EmbeddingRanker:
     def __init__(self):
         self.cache = {}
         self.cache_limit = 10000
-        try:
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        except Exception:
-            device = "cpu"
-        self.device = device
-        self.model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-        print(f"[embedding_ranker.init] device={self.device}")
+        self._device = None
+        self._model = None
+
+    @property
+    def device(self):
+        if self._device is None:
+            try:
+                import torch
+                self._device = "cuda" if torch.cuda.is_available() else "cpu"
+            except Exception:
+                self._device = "cpu"
+        return self._device
+
+    @property
+    def model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer("all-MiniLM-L6-v2", device=self.device)
+            print(f"[embedding_ranker.init] device={self.device}")
+        return self._model
 
     def build_text(self, track):
         if build_track_profile is not None:
@@ -50,6 +59,7 @@ class EmbeddingRanker:
             return []
 
         try:
+            import numpy as np
             track_vecs = np.vstack(track_embeddings)
         except ValueError:
             return []

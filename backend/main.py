@@ -20,7 +20,6 @@ from fastapi.responses import JSONResponse, RedirectResponse
 import urllib.parse
 from urllib.parse import urlparse
 import requests
-import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,7 +48,8 @@ from app_database import (
     delete_spotify_connection, count_duplicate_spotify_connections,
     get_or_create_session_user, latest_snapshot_id_for_user,
     find_user_by_display_name, attach_email_to_session_user,
-    save_generated_playlist, get_user_playlists
+    save_generated_playlist, get_user_playlists,
+    get_or_create_user_from_spotify, update_user_genome_profile
 )
 
 from engine import (
@@ -82,7 +82,6 @@ from Leaderboard import (
 from playlist_generator import PlaylistGenerator
 from spotify_oauth_service import SpotifyOAuthService
 from token_security import token_encryption_configured
-from user_profile_encoder import get_user_embedding
 from adaptive_questions import AdaptiveQuestionService
 from clip_rotation import ClipAssetRotator, DynamicClipRotator, clip_distribution_diagnostics, select_round_clip_ids
 from gemini_service import gemini_service
@@ -105,6 +104,12 @@ from Email_service import (
     send_retake_reminder, send_share_link_created_notification,
     process_email_queue
 )
+from email_scheduler import (
+    start_email_scheduler,
+    stop_email_scheduler,
+    trigger_recalibration_reminders
+)
+from genome_verification import run_genome_verification
 
 # ── New Feature Module Routers ────────────────────────────────────────────────
 # Each module already declares its own router prefix; we just include them.
@@ -399,11 +404,22 @@ async def lifespan(app: FastAPI):
             create_new_module_tables()
         except Exception as e:
             print(f"[startup.warn] New module table creation failed: {e}")
+
+    try:
+        start_email_scheduler()
+        print("[startup.ok] Background email reminder scheduler started")
+    except Exception as e:
+        print(f"[startup.warn] Failed to start email scheduler: {e}")
     
     yield  # App runs here
     
     # SHUTDOWN
     print("[shutdown] Shutting down gracefully...")
+    try:
+        stop_email_scheduler()
+        print("[shutdown.ok] Background email scheduler stopped")
+    except Exception as e:
+        print(f"[shutdown.warn] Error stopping email scheduler: {e}")
 
 # ── Initialize FastAPI App ────────────────────
 app = FastAPI(
@@ -486,7 +502,7 @@ if _RECOMMENDATIONS_AVAILABLE and recommendations_router:
 print("[startup] Initializing services...")
 
 try:
-    engine = GenomeEngine()
+    engine = GenomeEngine(lazy=True)
     print("[startup.ok] GenomeEngine loaded")
 except Exception as e:
     print(f"[startup.warn] GenomeEngine initialization failed: {e}")
@@ -744,14 +760,24 @@ def _safe_feedback_event(raw_event: dict, *, subject: str, session_id: str) -> d
     return event
 
 
-def _redirect_with_spotify_status(return_to: Optional[str], status: str, detail: str = "") -> RedirectResponse:
+def _redirect_with_spotify_status(
+    return_to: Optional[str],
+    status: str,
+    detail: str = "",
+    session_token: Optional[str] = None,
+) -> RedirectResponse:
     base_url = (
         return_to
         or _frontend_url()
         or LOCAL_FRONTEND_FALLBACK
     )
     separator = "&" if "?" in base_url else "?"
-    params = urllib.parse.urlencode({"spotify": status, "detail": detail[:80]})
+    query_params = {"spotify": status}
+    if detail:
+        query_params["detail"] = detail[:80]
+    if session_token:
+        query_params["session_token"] = session_token
+    params = urllib.parse.urlencode(query_params)
     return RedirectResponse(f"{base_url}{separator}{params}")
 
 
@@ -1151,7 +1177,7 @@ def health():
             "playlist_generator": True
         },
         "data": {
-            "users_loaded": len(engine.genome_df) if engine else 0,
+            "users_loaded": engine.users_loaded_count if engine else 0,
             "clips_loaded": len(CLIP_FEATURES),
         },
         "config": {
@@ -2520,6 +2546,7 @@ def _generate_user_playlist_internal(
     taste_profile = _load_spotify_taste_profile(user_id) if get_spotify_connection(user_id) else None
     tracks = (taste_profile or {}).get("top_tracks") or (get_user_spotify_tracks(user_id) if get_spotify_connection(user_id) else [])
 
+    from user_profile_encoder import get_user_embedding
     user_embedding = get_user_embedding(
         spotify_taste_profile=taste_profile,
         quiz_genome=genome,
@@ -2759,6 +2786,7 @@ def generate_trial_playlist(payload: PlaylistTrialPayload):
         print(f"Target minutes: {payload.target_minutes}")
     
     # Use real PlaylistGenerator with real Spotify service
+    from user_profile_encoder import get_user_embedding
     trial_generator = PlaylistGenerator(spotify_service=spotify)
     trial_user_embedding = get_user_embedding(
         quiz_genome=payload.genome,
@@ -2815,41 +2843,70 @@ def generate_trial_playlist(payload: PlaylistTrialPayload):
         import traceback
         traceback.print_exc()
         return _fallback_playlist_response(payload, size, "spotify_error")
-@app.get("/spotify/login")
-def spotify_login(session_token: str, return_to: Optional[str] = None):
-    with _latency_span("spotify_api", "spotify_login"):
-        if not spotify_oauth.configured():
+@app.get("/auth/login")
+def auth_login(
+    session_token: Optional[str] = None,
+    return_to: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """
+    Initiate Spotify OAuth authentication.
+    Supports unauthenticated logins (creating/fetching users) as well as
+    linking to an existing session.
+    """
+    with _latency_span("auth_api", "auth_login"):
+        if not spotify_oauth or not spotify_oauth.configured():
             raise HTTPException(status_code=503, detail="Spotify OAuth is not configured.")
-        user_id = resolve_session_token(session_token)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid SonicDNA session.")
-        state = spotify_oauth.make_state(session_token, return_to)
-        return RedirectResponse(spotify_oauth.authorization_url(state))
+        state = spotify_oauth.make_state(session_token=session_token, return_to=return_to)
+        url = spotify_oauth.authorization_url(state)
+        if format == "json":
+            return {"url": url, "state": state}
+        return RedirectResponse(url)
 
 
-@app.get("/spotify/callback")
-def spotify_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    with _latency_span("spotify_api", "spotify_callback"):
+@app.get("/auth/callback")
+def auth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """
+    Handle Spotify OAuth callback.
+    Provisions or finds user in Supabase PostgreSQL via get_or_create_user_from_spotify(),
+    stores encrypted connection tokens, issues a signed session token, and redirects
+    to frontend.
+    """
+    with _latency_span("auth_api", "auth_callback"):
         state_payload = spotify_oauth.parse_state(state or "")
         return_to = (state_payload or {}).get("return_to")
         if error:
             return _redirect_with_spotify_status(return_to, "error", error)
         if not state_payload:
             raise HTTPException(status_code=400, detail="Invalid Spotify OAuth state.")
-        user_id = resolve_session_token(state_payload.get("session_token"))
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid SonicDNA session.")
         if not code:
             return _redirect_with_spotify_status(return_to, "error", "missing_code")
 
         try:
             token_data = spotify_oauth.exchange_code(code)
             current_user = spotify_oauth.get_current_user(token_data["access_token"])
+
+            # 1. Check if an existing session token was provided in state
+            user_id = resolve_session_token(state_payload.get("session_token"))
+            if not user_id:
+                # 2. Provision or fetch existing user from Spotify record in Supabase PostgreSQL
+                user = get_or_create_user_from_spotify(
+                    spotify_user_id=current_user["id"],
+                    display_name=current_user.get("display_name"),
+                    email=current_user.get("email"),
+                )
+                user_id = user["id"]
+
             existing_connection = get_spotify_connection(user_id)
             refresh_token = token_data.get("refresh_token") or (existing_connection or {}).get("refresh_token")
             if not refresh_token:
-                print(f"[spotify.callback.missing_refresh_token] user_id={user_id}")
+                print(f"[auth.callback.missing_refresh_token] user_id={user_id}")
                 return _redirect_with_spotify_status(return_to, "error", "missing_refresh_token")
+
             save_spotify_connection(
                 user_id=user_id,
                 spotify_user_id=current_user["id"],
@@ -2860,16 +2917,55 @@ def spotify_callback(code: Optional[str] = None, state: Optional[str] = None, er
             try:
                 _load_spotify_taste_profile(user_id)
             except Exception as profile_error:
-                print(f"[spotify.callback.profile_warning] user_id={user_id} error={_redact_for_log(profile_error)}")
-            return _redirect_with_spotify_status(return_to, "connected")
+                print(f"[auth.callback.profile_warning] user_id={user_id} error={_redact_for_log(profile_error)}")
+
+            session_token = make_session_token(user_id)
+            return _redirect_with_spotify_status(return_to, "connected", session_token=session_token)
         except Exception as e:
-            print(f"[spotify.callback.failed] error={_redact_for_log(e)}")
+            print(f"[auth.callback.failed] error={_redact_for_log(e)}")
             return _redirect_with_spotify_status(return_to, "error", "connection_failed")
+
+
+@app.get("/spotify/login")
+def spotify_login(
+    session_token: Optional[str] = None,
+    return_to: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    return auth_login(session_token=session_token, return_to=return_to, format=format)
+
+
+@app.get("/spotify/callback")
+def spotify_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    return auth_callback(code=code, state=state, error=error)
 
 
 @app.get("/callback")
 def legacy_spotify_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    return spotify_callback(code=code, state=state, error=error)
+    return auth_callback(code=code, state=state, error=error)
+
+
+@app.get("/api/debug/verify-genome")
+@app.post("/api/debug/verify-genome")
+def api_verify_genome():
+    """
+    Run end-to-end database genome persistence diagnostics.
+    Tests mock user insert, sanitizer cleansing, and in-place profile updates without duplication.
+    """
+    with _latency_span("debug_api", "verify_genome"):
+        result = run_genome_verification()
+        status_code = 200 if result.get("status") == "passed" else 500
+        return JSONResponse(status_code=status_code, content=result)
+
+
+@app.post("/api/email/trigger-reminders")
+def api_trigger_email_reminders(min_days: int = 7, force: bool = False):
+    """
+    Trigger scheduled Taste Genome recalibration reminder emails.
+    """
+    with _latency_span("email_api", "trigger_reminders"):
+        result = trigger_recalibration_reminders(min_days_since_calibration=min_days, force=force)
+        return result
 
 
 @app.get("/spotify/status")
@@ -2937,6 +3033,7 @@ def save_spotify_track(payload: SaveSpotifyTrackPayload):
 
 if __name__ == "__main__":
     import uvicorn
+    
     
     print("\n" + "="*50)
     print("🎵 MUSIC TASTE GENOME API v3.0")

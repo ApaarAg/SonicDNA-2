@@ -1806,9 +1806,10 @@ You."></h2>
             const btn = document.getElementById('btn-spotify-connect');
             if (btn) btn.disabled = true;
             try {
-              const token = localStorage.getItem('sonic_session');
+              const token = localStorage.getItem('sonic_session') || '';
               const returnTo = window.location.href.split('?')[0];
-              window.location.href = `${API_URL}/spotify/login?session_token=${encodeURIComponent(token)}&return_to=${encodeURIComponent(returnTo)}`;
+              const tokenParam = token ? `session_token=${encodeURIComponent(token)}&` : '';
+              window.location.href = `${API_URL}/auth/login?${tokenParam}return_to=${encodeURIComponent(returnTo)}`;
             } catch (e) {
               if (btn) btn.disabled = false;
               showToast('Could not start Spotify connection.');
@@ -5806,6 +5807,21 @@ in the songs."></h2>
 
   /* ── 3. BOOT — runs on DOMContentLoaded ──────────────────────────────── */
   async function boot() {
+    // 1. Capture session_token if returning from OAuth redirect
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('session_token');
+      if (urlToken) {
+        localStorage.setItem('sonic_session', urlToken);
+        urlParams.delete('session_token');
+        const cleanQuery = urlParams.toString();
+        const cleanUrl = window.location.pathname + (cleanQuery ? '?' + cleanQuery : '') + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (urlErr) {
+      console.warn('[SonicDNA] Failed to parse URL session token:', urlErr);
+    }
+
     const stored = localStorage.getItem('sonic_session');
     try {
       if (stored) {

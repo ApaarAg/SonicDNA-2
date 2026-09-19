@@ -618,6 +618,9 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
             "id": str(user.id),
             "email": user.email,
             "display_name": user.display_name,
+            "archetype": user.archetype,
+            "shadow_archetype": user.shadow_archetype,
+            "last_seen": user.last_seen.isoformat() if user.last_seen else None,
             "created_at": user.created_at.isoformat() if user.created_at else None,
         }
 
@@ -642,6 +645,131 @@ def find_user_by_display_name(display_name: str) -> Optional[dict]:
             "display_name": user.display_name,
             "created_at": user.created_at.isoformat() if user.created_at else None,
         }
+
+
+def get_user_by_spotify_id(spotify_user_id: str) -> Optional[dict]:
+    """Fetch user dict by their connected Spotify User ID."""
+    if not spotify_user_id:
+        return None
+    with SessionLocal() as db:
+        conn = db.query(SpotifyConnection).filter(SpotifyConnection.spotify_user_id == spotify_user_id).first()
+        if conn:
+            user = db.query(User).filter(User.id == conn.user_id).first()
+            if user:
+                return {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "archetype": user.archetype,
+                    "shadow_archetype": user.shadow_archetype,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                }
+    return None
+
+
+def get_or_create_user_from_spotify(
+    spotify_user_id: str,
+    display_name: Optional[str] = None,
+    email: Optional[str] = None,
+) -> dict:
+    """
+    Find existing user by Spotify ID or email, or provision a new User record via SQLAlchemy.
+    Never duplicates user accounts.
+    """
+    existing_by_spotify = get_user_by_spotify_id(spotify_user_id)
+    if existing_by_spotify:
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == existing_by_spotify["id"]).first()
+            if user:
+                if display_name and display_name.strip() and not user.display_name:
+                    user.display_name = display_name.strip()
+                if email and not user.email:
+                    user.email = email.strip().lower()
+                user.last_seen = datetime.utcnow()
+                db.commit()
+        existing_by_spotify["is_new"] = False
+        return existing_by_spotify
+
+    normalized_email = (email or "").strip().lower()
+    if normalized_email and not normalized_email.endswith("@sonicdna.local"):
+        with SessionLocal() as db:
+            existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+            if existing_user:
+                existing_user.last_seen = datetime.utcnow()
+                if display_name and not existing_user.display_name:
+                    existing_user.display_name = display_name.strip()
+                db.commit()
+                return {
+                    "id": str(existing_user.id),
+                    "email": existing_user.email,
+                    "display_name": existing_user.display_name,
+                    "archetype": existing_user.archetype,
+                    "shadow_archetype": existing_user.shadow_archetype,
+                    "created_at": existing_user.created_at.isoformat() if existing_user.created_at else None,
+                    "is_new": False,
+                }
+
+    new_id = str(uuid.uuid4())
+    name = (display_name or "").strip() or f"Spotify User {spotify_user_id[:6]}"
+    with SessionLocal() as db:
+        user = User(
+            id=new_id,
+            email=normalized_email or f"spotify+{spotify_user_id}@sonicdna.local",
+            display_name=name,
+            created_at=datetime.utcnow(),
+            last_seen=datetime.utcnow(),
+        )
+        db.add(user)
+        db.commit()
+        return {
+            "id": new_id,
+            "email": user.email,
+            "display_name": name,
+            "archetype": None,
+            "shadow_archetype": None,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "is_new": True,
+        }
+
+
+def update_user_genome_profile(user_id: str, result: dict, region: str = "global_english") -> dict:
+    """
+    Perform an UPDATE on the existing User profile record (archetype, shadow_archetype, last_seen)
+    and append a clean GenomeSnapshot. Ensures zero row duplication for the user.
+    """
+    sanitized = sanitize_snapshot_payload(result)
+    raw_arch = sanitized.get("archetype")
+    arch_dict = {"name": raw_arch} if isinstance(raw_arch, str) else (raw_arch if isinstance(raw_arch, dict) else {})
+
+    dual_id = sanitized.get("dual_identity") if isinstance(sanitized.get("dual_identity"), dict) else {}
+    sec_arch = dual_id.get("secondary_archetype")
+    sec_dict = {"name": sec_arch} if isinstance(sec_arch, str) else (sec_arch if isinstance(sec_arch, dict) else {})
+
+    primary_name = arch_dict.get("name") or sanitized.get("archetype_name")
+    secondary_name = (
+        sec_dict.get("name")
+        or sanitized.get("secondary_name")
+        or sanitized.get("shadow_archetype")
+        or arch_dict.get("secondary_name")
+    )
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError(f"User {user_id} does not exist for profile update.")
+        user.archetype = primary_name
+        user.shadow_archetype = secondary_name
+        user.last_seen = datetime.utcnow()
+        db.commit()
+
+    snapshot_id = save_genome_snapshot(user_id, sanitized, region)
+    return {
+        "user_id": user_id,
+        "archetype": primary_name,
+        "shadow_archetype": secondary_name,
+        "snapshot_id": snapshot_id,
+        "updated": True,
+    }
 
 
 def latest_snapshot_id_for_user(user_id: str) -> Optional[str]:
@@ -946,26 +1074,45 @@ def save_genome_snapshot(user_id: str, result: dict, region: str = "global_engli
     sanitized = sanitize_snapshot_payload(result)
     snapshot_id = str(uuid.uuid4())
     genome = result.get("genome_features") or result.get("genome") or {}
-    archetype = result.get("archetype") or {}
-    cluster_id = result.get("cluster_id") or 0
+    raw_archetype = result.get("archetype")
+    if isinstance(raw_archetype, str):
+        archetype_dict = {"name": raw_archetype}
+    elif isinstance(raw_archetype, dict):
+        archetype_dict = raw_archetype
+    else:
+        archetype_dict = {}
 
-    dual_id = result.get("dual_identity") or {}
-    sec_arch = dual_id.get("secondary_archetype") or {}
+    archetype_name = archetype_dict.get("name") or result.get("archetype_name")
+    cluster_id = archetype_dict.get("cluster_id") or archetype_dict.get("id") or result.get("cluster_id") or 0
+
+    dual_id = result.get("dual_identity") if isinstance(result.get("dual_identity"), dict) else {}
+    sec_arch = dual_id.get("secondary_archetype")
+    if isinstance(sec_arch, str):
+        sec_arch_dict = {"name": sec_arch}
+    elif isinstance(sec_arch, dict):
+        sec_arch_dict = sec_arch
+    else:
+        sec_arch_dict = {}
 
     primary_pct = dual_id.get("primary_pct")
     if primary_pct is None:
         primary_pct = result.get("primary_pct")
     if primary_pct is None:
-        primary_pct = archetype.get("primary_pct")
+        primary_pct = archetype_dict.get("primary_pct")
     if primary_pct is None:
         primary_pct = 100.0
 
-    secondary_name = sec_arch.get("name") or result.get("secondary_name") or archetype.get("secondary_name")
+    secondary_name = (
+        sec_arch_dict.get("name")
+        or result.get("secondary_name")
+        or archetype_dict.get("secondary_name")
+        or result.get("shadow_archetype")
+    )
     secondary_pct = dual_id.get("secondary_pct")
     if secondary_pct is None:
         secondary_pct = result.get("secondary_pct")
     if secondary_pct is None:
-        secondary_pct = archetype.get("secondary_pct")
+        secondary_pct = archetype_dict.get("secondary_pct")
     if secondary_pct is None:
         secondary_pct = 0.0
 
@@ -974,7 +1121,7 @@ def save_genome_snapshot(user_id: str, result: dict, region: str = "global_engli
             id=snapshot_id,
             user_id=user_id,
             archetype_id=int(cluster_id) if cluster_id is not None else None,
-            archetype_name=archetype.get("name") or result.get("archetype_name"),
+            archetype_name=archetype_name,
             primary_pct=float(primary_pct) if primary_pct is not None else 100.0,
             secondary_name=secondary_name,
             secondary_pct=float(secondary_pct) if secondary_pct is not None else 0.0,
@@ -984,6 +1131,13 @@ def save_genome_snapshot(user_id: str, result: dict, region: str = "global_engli
             created_at=datetime.utcnow(),
         )
         db.add(snap)
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            if archetype_name:
+                user.archetype = archetype_name
+            if secondary_name:
+                user.shadow_archetype = secondary_name
+            user.last_seen = datetime.utcnow()
         db.commit()
     return snapshot_id
 

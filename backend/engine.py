@@ -4,11 +4,9 @@ import re as _re
 from pathlib import Path
 from pathlib import Path as _Path
 
-import numpy as np
-import pandas as pd
+import math
 from dotenv import load_dotenv
 from groq import Groq
-from sklearn.metrics.pairwise import cosine_similarity
 
 load_dotenv()
 
@@ -170,18 +168,64 @@ RADAR_LABELS = [
 
 
 class GenomeEngine:
-    def __init__(self):
-        print("Loading genome data...")
-        self.genome_df = pd.read_csv(DATA_DIR / "user_genome_clustered.csv")
-        self.sim_df    = pd.read_csv(
-            DATA_DIR / "user_genre_similarity.csv",
-            index_col="user_id"
-        )
-        self.user_index = set(self.genome_df["user_id"].values)
+    def __init__(self, lazy: bool = True):
+        self._loaded = False
+        self._genome_df = None
+        self._sim_df = None
+        self._user_index = set()
+        self._cluster_genre_avg = None
+        if not lazy:
+            self._ensure_loaded()
 
-        # Precompute cluster-level genre averages
-        self.cluster_genre_avg = self._compute_cluster_genre_averages()
-        print(f"Engine ready — {len(self.genome_df):,} users loaded.")
+    def _ensure_loaded(self):
+        if self._loaded:
+            return
+        import pandas as pd
+        print("Loading genome data...")
+        csv_clustered = DATA_DIR / "user_genome_clustered.csv"
+        csv_sim = DATA_DIR / "user_genre_similarity.csv"
+        if csv_clustered.exists():
+            self._genome_df = pd.read_csv(csv_clustered)
+            self._user_index = set(self._genome_df["user_id"].values)
+        if csv_sim.exists():
+            self._sim_df = pd.read_csv(csv_sim, index_col="user_id")
+            if self._genome_df is not None:
+                self._cluster_genre_avg = self._compute_cluster_genre_averages()
+        self._loaded = True
+        total = len(self._genome_df) if self._genome_df is not None else 0
+        print(f"Engine ready — {total:,} users loaded.")
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    @property
+    def users_loaded_count(self) -> int:
+        return len(self._genome_df) if self._genome_df is not None else 0
+
+    @property
+    def genome_df(self):
+        if not self._loaded:
+            self._ensure_loaded()
+        return self._genome_df
+
+    @property
+    def sim_df(self):
+        if not self._loaded:
+            self._ensure_loaded()
+        return self._sim_df
+
+    @property
+    def user_index(self):
+        if not self._loaded:
+            self._ensure_loaded()
+        return self._user_index
+
+    @property
+    def cluster_genre_avg(self):
+        if not self._loaded:
+            self._ensure_loaded()
+        return self._cluster_genre_avg
 
     def _compute_cluster_genre_averages(self):
         """Precompute average genre similarity per cluster."""
@@ -204,7 +248,7 @@ class GenomeEngine:
         radar_vals = []
         for feat in RADAR_FEATURES:
             z = float(row[feat])
-            radar_vals.append(round(float(np.clip((z + 3) / 6, 0, 1)), 3))
+            radar_vals.append(round(max(0.0, min(1.0, (z + 3.0) / 6.0)), 3))
 
         cluster_genres = self.cluster_genre_avg.loc[cluster]
         top_genres  = cluster_genres.sort_values(ascending=False).head(3)
@@ -298,6 +342,20 @@ SHARED_FEATURES = [
 ]
 
 
+def _calc_centroid_similarities(raw_genome: dict) -> list:
+    """Compute cosine similarity between raw_genome and all 7 cluster centroids using pure math."""
+    user_vec = [float(raw_genome.get(f, 0.0)) for f in SHARED_FEATURES]
+    u_norm = math.sqrt(sum(x * x for x in user_vec))
+    sims = []
+    for c in range(7):
+        centroid = [float(CLUSTER_CENTROIDS[c][f]) for f in SHARED_FEATURES]
+        c_norm = math.sqrt(sum(y * y for y in centroid))
+        dot = sum(x * y for x, y in zip(user_vec, centroid))
+        denom = u_norm * c_norm
+        sims.append(dot / denom if denom > 1e-9 else 0.0)
+    return sims
+
+
 def analyze_quiz(answers: list) -> dict:
     """
     Convert quiz answers (1-5 scale) into a genome vector,
@@ -314,13 +372,7 @@ def analyze_quiz(answers: list) -> dict:
         if feat not in raw_genome:
             raw_genome[feat] = 0.0
 
-    user_vec = np.array([raw_genome[f] for f in SHARED_FEATURES])
-    centroid_matrix = np.array([
-        [CLUSTER_CENTROIDS[c][f] for f in SHARED_FEATURES]
-        for c in range(7)
-    ])
-
-    sims = cosine_similarity([user_vec], centroid_matrix)[0]
+    sims = _calc_centroid_similarities(raw_genome)
 
     sorted_sims       = sorted(enumerate(sims), key=lambda x: x[1], reverse=True)
     primary_cluster   = sorted_sims[0][0]
@@ -329,16 +381,16 @@ def analyze_quiz(answers: list) -> dict:
     secondary_conf    = float(sims[secondary_cluster])
 
     total         = sum(max(0, s) for _, s in sorted_sims)
-    primary_pct   = round(max(0, primary_conf)   / total * 100, 1)
-    secondary_pct = round(max(0, secondary_conf) / total * 100, 1)
+    primary_pct   = round(max(0, primary_conf)   / (total or 1) * 100, 1)
+    secondary_pct = round(max(0, secondary_conf) / (total or 1) * 100, 1)
 
-    best_cluster = int(np.argmax(sims))
+    best_cluster = primary_cluster
     archetype    = ARCHETYPES[best_cluster]
 
     radar_vals = []
     for feat in RADAR_FEATURES:
         z = raw_genome.get(feat, 0.0)
-        radar_vals.append(round(float(np.clip((z + 3) / 6, 0, 1)), 3))
+        radar_vals.append(round(float(max(0.0, min(1.0, (z + 3) / 6))), 3))
 
     archetype_scores = {
         ARCHETYPES[i]["name"]: round(float(sims[i]), 3)
@@ -384,12 +436,7 @@ def _build_profile_from_genome(raw_genome: dict, source: str, extra: dict = None
     Shared helper: given a raw genome dict (feature→z-score-like value),
     compute cosine similarity to centroids and return the full profile JSON.
     """
-    user_vec = np.array([raw_genome.get(f, 0.0) for f in SHARED_FEATURES])
-    centroid_matrix = np.array([
-        [CLUSTER_CENTROIDS[c][f] for f in SHARED_FEATURES]
-        for c in range(7)
-    ])
-    sims = cosine_similarity([user_vec], centroid_matrix)[0]
+    sims = _calc_centroid_similarities(raw_genome)
 
     sorted_sims       = sorted(enumerate(sims), key=lambda x: x[1], reverse=True)
     primary_cluster   = sorted_sims[0][0]
@@ -406,7 +453,7 @@ def _build_profile_from_genome(raw_genome: dict, source: str, extra: dict = None
     radar_vals = []
     for feat in RADAR_FEATURES:
         z = raw_genome.get(feat, 0.0)
-        radar_vals.append(round(float(np.clip((z + 3) / 6, 0, 1)), 3))
+        radar_vals.append(round(float(max(0.0, min(1.0, (z + 3) / 6))), 3))
 
     archetype_scores = {
         ARCHETYPES[i]["name"]: round(float(sims[i]), 3)
@@ -562,7 +609,7 @@ def _clip_feature_distance(clip_a: dict, clip_b: dict) -> float:
             "acousticness","instrumentalness","speechiness"]
     fa = clip_a["features"]
     fb = clip_b["features"]
-    return float(np.sqrt(sum((fa[k]-fb[k])**2 for k in keys)))
+    return float(math.sqrt(sum((fa[k]-fb[k])**2 for k in keys)))
 
 
 def get_calibration_clips(n: int = 3, session_key: str = "") -> list:
@@ -669,7 +716,7 @@ def get_adaptive_clips(
 
     def proximity_score(clip_id):
         feat = _CLIP_FEATURES[clip_id]["features"]
-        dist = np.sqrt(sum(
+        dist = math.sqrt(sum(
             (feat.get(f,0.5) - target[f])**2
             for f in FEAT_KEYS
         ))

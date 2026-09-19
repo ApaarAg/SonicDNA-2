@@ -2,9 +2,7 @@
 # SONIC DNA — Social Comparison Engine
 # ============================================
 
-import numpy as np
 from typing import Dict, List, Tuple, Optional
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 class SocialComparisonEngine:

@@ -8,12 +8,6 @@ from typing import List
 import unicodedata
 import requests
 
-try:
-    from embedding_ranker import EmbeddingRanker
-except Exception:
-    EmbeddingRanker = None
-
-
 SEARCH_CACHE_TTL_SECONDS = 300
 REGIONAL_CACHE_TTL_SECONDS = 120
 MAX_DISCOVERY_SEARCH_CALLS = 12
@@ -524,15 +518,23 @@ class SpotifyService:
         self.search_cache = {}
         self.regional_cache = {}
         self.search_cooldown_until = 0.0
-        self.embedding_ranker = None
-
-        if EmbeddingRanker is not None:
-            try:
-                self.embedding_ranker = EmbeddingRanker()
-            except Exception as e:
-                print(f"[spotify.embedding.init_error] error={e}")
+        self._embedding_ranker = None
 
         self._authenticate()
+
+    @property
+    def embedding_ranker(self):
+        if self._embedding_ranker is None:
+            try:
+                from embedding_ranker import EmbeddingRanker
+                self._embedding_ranker = EmbeddingRanker()
+            except Exception as e:
+                print(f"[spotify.embedding.init_error] error={e}")
+        return self._embedding_ranker
+
+    @embedding_ranker.setter
+    def embedding_ranker(self, value):
+        self._embedding_ranker = value
 
 
     def _authenticate(self):

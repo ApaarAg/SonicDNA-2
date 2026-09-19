@@ -8,9 +8,7 @@ charge of the listening experience.
 """
 
 from collections import Counter, deque
-from typing import Dict, Iterable, List, Optional, Tuple
-
-import numpy as np
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     from spotify_service_fixed import canonicalize_genres, normalize_artist_name, track_fingerprint
@@ -74,9 +72,10 @@ def _community(track: dict) -> str:
     return region or "unknown"
 
 
-def _norm(embedding) -> Optional[np.ndarray]:
+def _norm(embedding) -> Optional[Any]:
     if embedding is None:
         return None
+    import numpy as np
     vec = np.asarray(embedding, dtype=np.float32)
     if vec.ndim != 1 or vec.size == 0:
         return None
@@ -91,6 +90,7 @@ def _cosine(left, right) -> Optional[float]:
     right_vec = _norm(right)
     if left_vec is None or right_vec is None or left_vec.shape != right_vec.shape:
         return None
+    import numpy as np
     return float(np.clip(np.dot(left_vec, right_vec), -1.0, 1.0))
 
 

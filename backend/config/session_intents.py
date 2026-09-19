@@ -33,8 +33,6 @@ import math
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Intent profile schema
@@ -741,7 +739,7 @@ def list_intents() -> List[str]:
 # Semantic intent embedding (lazy-initialised, uses existing infrastructure)
 # ---------------------------------------------------------------------------
 
-_intent_embeddings: Optional[Dict[str, np.ndarray]] = None
+_intent_embeddings: Optional[Dict[str, Any]] = None
 _embedding_ranker_ref = None  # cached reference to avoid repeated lookups
 
 
@@ -787,7 +785,7 @@ def _get_ranker():
     return None
 
 
-def _get_intent_embeddings() -> Optional[Dict[str, np.ndarray]]:
+def _get_intent_embeddings() -> Optional[Dict[str, Any]]:
     """Lazily compute and cache semantic embeddings for all intent profiles.
 
     Uses the same ``all-MiniLM-L6-v2`` model already loaded by
@@ -806,6 +804,7 @@ def _get_intent_embeddings() -> Optional[Dict[str, np.ndarray]]:
         texts[name] = _build_intent_text(profile)
 
     try:
+        import numpy as np
         names = list(texts.keys())
         text_list = [texts[n] for n in names]
         vecs = ranker.embed_texts_cached(text_list)
@@ -840,6 +839,7 @@ def _semantic_match(
         return []
 
     try:
+        import numpy as np
         query_vec = ranker.embed_cached(query.strip()[:500])
         query_norm = np.linalg.norm(query_vec)
         if query_norm > 0:

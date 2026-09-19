@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-# pyrefly: ignore [missing-import]
-import numpy as np
 
 try:
     from spotify_service_fixed import (
@@ -84,16 +82,18 @@ _FLOW_ALPHA: float = _GCFG.FLOW_ALPHA if _CONFIG_AVAILABLE else 0.08
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+def _cosine(a: Any, b: Any) -> float:
     """Return cosine similarity of two pre-normalised 1-D float32 arrays."""
+    import numpy as np
     dot = float(np.dot(a, b))
     return max(-1.0, min(1.0, dot))
 
 
-def _norm(vec) -> Optional[np.ndarray]:
+def _norm(vec) -> Optional[Any]:
     """Normalise *vec* to unit length; return None on degenerate input."""
     if vec is None:
         return None
+    import numpy as np
     arr = np.asarray(vec, dtype=np.float32)
     if arr.ndim != 1 or arr.size == 0:
         return None
@@ -219,7 +219,7 @@ class TrackGraph:
         descending by weight, length ≤ top_k.
     _track_by_id : dict[str, dict]
         Quick track-dict lookup.
-    _embed_by_id : dict[str, np.ndarray]
+    _embed_by_id : dict[str, Any]
         Normalised embedding per track_id.
     """
 
@@ -227,7 +227,7 @@ class TrackGraph:
         self.top_k = top_k
         self._adjacency: Dict[str, List[Tuple[str, float]]] = {}
         self._track_by_id: Dict[str, dict] = {}
-        self._embed_by_id: Dict[str, np.ndarray] = {}
+        self._embed_by_id: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Construction
@@ -269,7 +269,7 @@ class TrackGraph:
             embed_list = embed_list[:n]
 
         # Normalise embeddings & index tracks
-        normed: List[Optional[np.ndarray]] = []
+        normed: List[Optional[Any]] = []
         ids: List[str] = []
         for track, raw_embed in zip(tracks, embed_list):
             tid = _track_id(track)
@@ -553,7 +553,8 @@ if __name__ == "__main__":
 
     _rng = random.Random(42)
 
-    def _rand_embed(dim: int = 384) -> np.ndarray:
+    def _rand_embed(dim: int = 384):
+        import numpy as np
         v = np.array([_rng.gauss(0, 1) for _ in range(dim)], dtype=np.float32)
         return v / np.linalg.norm(v)
 

@@ -2,12 +2,6 @@ from typing import Iterable, List, Optional
 
 import numpy as np
 
-try:
-    from embedding_ranker import EmbeddingRanker
-except Exception:
-    EmbeddingRanker = None
-
-
 SIGNAL_WEIGHTS = {
     "quiz": 0.5,
     "spotify": 0.3,
@@ -147,14 +141,13 @@ class UserProfileEncoder:
     def __init__(self, embedding_ranker=None):
         if embedding_ranker is not None:
             self.embedding_ranker = embedding_ranker
-        elif EmbeddingRanker is not None:
+        else:
             try:
+                from embedding_ranker import EmbeddingRanker
                 self.embedding_ranker = EmbeddingRanker()
             except Exception as exc:
                 print(f"[user_profile_encoder.init_error] error={exc}")
                 self.embedding_ranker = None
-        else:
-            self.embedding_ranker = None
 
     def encode_text(self, text: str) -> Optional[np.ndarray]:
         if not self.embedding_ranker or not _clean(text):
