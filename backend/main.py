@@ -823,11 +823,11 @@ def _redirect_with_spotify_status(
     detail: str = "",
     session_token: Optional[str] = None,
 ) -> RedirectResponse:
-    base_url = (
-        return_to
-        or _frontend_url()
-        or LOCAL_FRONTEND_FALLBACK
-    )
+    frontend_url = os.getenv("FRONTEND_URL", "https://sonic-dna-2.vercel.app")
+    base_url = return_to or frontend_url
+    if not return_to:
+        base_url = base_url.rstrip('/') + '/'
+    
     separator = "&" if "?" in base_url else "?"
     query_params = {"spotify": status}
     if detail:
@@ -2537,9 +2537,82 @@ def get_recommendations(cluster_id: int, region_key: str, limit: int = 20) -> di
 
 
 
+@app.get("/recommendations/{user_id}")
+def get_user_recommendations(user_id: str):
+    # 1. Fetch user snapshot to get archetype and genome
+    snap = db_session.query(GenomeSnapshot).filter(
+        GenomeSnapshot.user_id == user_id
+    ).order_by(GenomeSnapshot.timestamp.desc()).first()
+    
+    archetype = snap.archetype if snap else "Midnight Drifter"
+    cluster_id = snap.cluster_id if snap else 1
+    region = snap.region_key if snap else "global_english"
+    
+    # Map archetype to a spotify seed genre
+    genre_map = {
+        "Sonic Explorer": "indie",
+        "Rhythmic Pioneer": "electronic",
+        "Melancholy Dreamer": "chill",
+        "Midnight Drifter": "synthwave",
+        "Classic Soul": "soul"
+    }
+    seed_genre = genre_map.get(archetype, "indie")
+    
+    tracks_out = []
+    
+    # 2. Extract Spotify connection
+    conn = get_spotify_connection(user_id)
+    success = False
+    
+    if conn and conn.get("access_token"):
+        # Refresh token if expired
+        if spotify_oauth.token_expired(conn):
+            new_tokens = spotify_oauth.refresh_access_token(conn["refresh_token"])
+            if "access_token" in new_tokens:
+                conn["access_token"] = new_tokens["access_token"]
+                save_spotify_connection(user_id, conn["spotify_user_id"], conn["access_token"], conn.get("refresh_token"), new_tokens.get("expires_in", 3600))
+        
+        try:
+            # Call Spotify API
+            res = spotify_oauth._get(
+                conn["access_token"], 
+                "recommendations", 
+                params={"seed_genres": seed_genre, "limit": 20}
+            )
+            if "tracks" in res:
+                for t in res["tracks"]:
+                    tracks_out.append({
+                        "title": t.get("name"),
+                        "artist": t["artists"][0]["name"] if t.get("artists") else "Unknown",
+                        "preview_url": t.get("preview_url"),
+                        "spotify_url": t["external_urls"].get("spotify") if t.get("external_urls") else None
+                    })
+                success = True
+        except Exception as e:
+            print(f"[recommendations] Spotify API failed: {e}")
+            
+    # 3. Fallback Path
+    if not success:
+        fallback = _fallback_recommendations(cluster_id, region, 20, "spotify_unavailable")
+        for t in fallback.get("tracks", []):
+            tracks_out.append({
+                "title": t.get("name"),
+                "artist": t.get("artist"),
+                "preview_url": t.get("preview_url") or t.get("audio_url"),
+                "spotify_url": t.get("external_url") or t.get("spotify_url")
+            })
+            
+    return {
+        "success": True,
+        "archetype": archetype,
+        "tracks": tracks_out,
+        "playlist_url": "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+    }
+
 # ════════════════════════════════════════════
 # METADATA ENDPOINTS
 # ════════════════════════════════════════════
+
 
 @app.get("/archetypes")
 def get_archetypes():

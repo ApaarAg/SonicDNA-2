@@ -1087,6 +1087,11 @@ You."></h2>
       const ro    = document.getElementById('quiz-readout');
 
       let clipAudio = new Audio();
+      clipAudio.loop = false;
+      clipAudio.onended = () => {
+        const playIcon = document.getElementById('clip-play-icon');
+        if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      };
       let clipAudioInterval = null;
 
       // Toast notification helper
@@ -1452,6 +1457,31 @@ You."></h2>
           initWaveformVisualizer();
         });
       }
+
+      function stopAllAudio() {
+        const audios = document.querySelectorAll('audio');
+        audios.forEach(a => {
+          a.pause();
+          a.currentTime = 0;
+          a.src = '';
+        });
+        if (typeof clipAudio !== 'undefined') {
+          clipAudio.pause();
+          const playIcon = document.getElementById('clip-play-icon');
+          if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        }
+        if (typeof recAudio !== 'undefined') {
+          recAudio.pause();
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('a[href^="#scene-"]').forEach(link => {
+          link.addEventListener('click', () => {
+            stopAllAudio();
+          });
+        });
+      });
 
       function stopClipAudio(callback) {
         if (fadeInterval) {
