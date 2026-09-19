@@ -2341,7 +2341,7 @@ You."></h2>
           <span class="mono text-[10px] tracking-[0.25em] text-white/45 tabular-nums">${(t.v*100).toFixed(0)}</span>
         </div>
       `).join('');
-      observeReveals();
+      if (typeof observeReveals === 'function') observeReveals();
 
       // helix
       const svg = document.getElementById('helix');
@@ -2545,7 +2545,7 @@ You are one."></h2>
           </div>
         </article>
       `).join('');
-      observeReveals();
+      if (typeof observeReveals === 'function') observeReveals();
       archetypeHover();
     })();
   </script>
@@ -3050,7 +3050,7 @@ as you."></h2>
             </div>
           </article>`;
         }).join('');
-        observeReveals();
+        if (typeof observeReveals === 'function') observeReveals();
       }
       renderGrid();
 
@@ -4429,7 +4429,7 @@ without a passport."></h2>
           outlineMapLoaded = true;
           return outlineMapHTML;
         } catch (err) {
-          console.error("[SonicDNA Atlas] Failed to load world-map.svg outline:", err.message);
+          /* world-map.svg missing, falling back to basic rendering */
           return '';
         }
       }
@@ -5959,7 +5959,7 @@ in the songs."></h2>
   /* ============ SECTION INITIALIZER (called after scenes injected) ============ */
   window.__sonicInit = function(){
     splitHeadlines();
-    observeReveals();
+    if (typeof observeReveals === 'function') observeReveals();
     mouseParallax();
     archetypeHover();
     initInterpretations();
