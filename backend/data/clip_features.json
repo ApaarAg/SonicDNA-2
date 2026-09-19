@@ -1,0 +1,325 @@
+{
+  "cal_01": {
+    "title": "Dark Orchestral",
+    "description": "Slow, cinematic, wordless",
+    "genre_hint": "Ambient / Cinematic",
+    "folder": "Dark orchestralcinematic",
+    "tags": ["dark_instrumental", "cinematic", "ambient"],
+    "features": {
+      "danceability": 0.15,
+      "energy": 0.35,
+      "valence": 0.10,
+      "acousticness": 0.40,
+      "instrumentalness": 0.95,
+      "speechiness": 0.03,
+      "tempo": 85.0
+    }
+  },
+  "cal_02": {
+    "title": "Upbeat Latin / Afrobeats",
+    "description": "Danceable, warm, uplifting",
+    "genre_hint": "Latin / Afrobeats",
+    "folder": "Upbeat latinafrobeats",
+    "tags": ["latin", "afrobeats", "dance_pop"],
+    "features": {
+      "danceability": 0.90,
+      "energy": 0.85,
+      "valence": 0.80,
+      "acousticness": 0.10,
+      "instrumentalness": 0.05,
+      "speechiness": 0.08,
+      "tempo": 128.0
+    }
+  },
+  "cal_03": {
+    "title": "Soft Acoustic",
+    "description": "Gentle, raw, emotionally deep",
+    "genre_hint": "Folk / Singer-Songwriter",
+    "folder": "Soft acoustic singer-songwriter",
+    "tags": ["folk", "acoustic_sad", "singer_songwriter"],
+    "features": {
+      "danceability": 0.30,
+      "energy": 0.20,
+      "valence": 0.35,
+      "acousticness": 0.92,
+      "instrumentalness": 0.10,
+      "speechiness": 0.05,
+      "tempo": 72.0
+    }
+  },
+  "cal_04": {
+    "title": "Hard Electronic / EDM",
+    "description": "Fast, intense, electric",
+    "genre_hint": "EDM / Electronic",
+    "folder": "Hard electronicEDMdrop",
+    "tags": ["edm", "electronic", "intense"],
+    "features": {
+      "danceability": 0.75,
+      "energy": 0.97,
+      "valence": 0.45,
+      "acousticness": 0.02,
+      "instrumentalness": 0.80,
+      "speechiness": 0.04,
+      "tempo": 145.0
+    }
+  },
+  "cal_05": {
+    "title": "Melancholic Indie",
+    "description": "Atmospheric, drifting, introspective",
+    "genre_hint": "Indie / Alt",
+    "folder": "Melancholic indiealt",
+    "tags": ["indie", "shoegaze", "alt"],
+    "features": {
+      "danceability": 0.40,
+      "energy": 0.50,
+      "valence": 0.25,
+      "acousticness": 0.35,
+      "instrumentalness": 0.20,
+      "speechiness": 0.04,
+      "tempo": 110.0
+    }
+  },
+  "cal_06": {
+    "title": "Rap / Hip-Hop",
+    "description": "Rhythmic, verbal, storytelling",
+    "genre_hint": "Hip-Hop / Rap",
+    "folder": "rap-hip-hop",
+    "tags": ["rap", "spoken_word", "rhythmic"],
+    "features": {
+      "danceability": 0.78,
+      "energy": 0.70,
+      "valence": 0.55,
+      "acousticness": 0.08,
+      "instrumentalness": 0.02,
+      "speechiness": 0.42,
+      "tempo": 95.0
+    }
+  },
+  "cal_07": {
+    "title": "Ambient Drone / New Age",
+    "description": "Slow, floating, wordless",
+    "genre_hint": "Ambient / New Age",
+    "folder": "Ambient-drone-newage",
+    "tags": ["ambient", "dark_instrumental", "cinematic"],
+    "features": {
+      "danceability": 0.20,
+      "energy": 0.12,
+      "valence": 0.30,
+      "acousticness": 0.60,
+      "instrumentalness": 0.98,
+      "speechiness": 0.03,
+      "tempo": 60.0
+    }
+  },
+  "cal_08": {
+    "title": "Feel-Good Pop / Funk",
+    "description": "Sunny, danceable, joyful",
+    "genre_hint": "Pop / Funk",
+    "folder": "Feel-good popfunk",
+    "tags": ["dance_pop", "funk", "feel_good"],
+    "features": {
+      "danceability": 0.88,
+      "energy": 0.78,
+      "valence": 0.92,
+      "acousticness": 0.15,
+      "instrumentalness": 0.03,
+      "speechiness": 0.06,
+      "tempo": 118.0
+    }
+  },
+  "prb_dark_01": {
+    "title": "Ambient Drone Deep",
+    "description": "Deeper ambient, vast and wordless",
+    "genre_hint": "Ambient / Drone",
+    "folder": "Ambientdronenew age",
+    "tags": ["dark_instrumental", "ambient", "cinematic"],
+    "features": {
+      "danceability": 0.10,
+      "energy": 0.40,
+      "valence": 0.08,
+      "acousticness": 0.30,
+      "instrumentalness": 0.97,
+      "speechiness": 0.03,
+      "tempo": 90.0
+    }
+  },
+  "prb_energy_01": {
+    "title": "Hard Electronic Surge",
+    "description": "Maximum energy, relentless drop",
+    "genre_hint": "EDM / Metal",
+    "folder": "Hard electronicEDMdrop",
+    "tags": ["metal", "intense", "edm"],
+    "features": {
+      "danceability": 0.45,
+      "energy": 0.99,
+      "valence": 0.20,
+      "acousticness": 0.01,
+      "instrumentalness": 0.60,
+      "speechiness": 0.05,
+      "tempo": 168.0
+    }
+  },
+  "prb_indie_01": {
+    "title": "Indie Bedroom",
+    "description": "Lo-fi, introspective, wandering",
+    "genre_hint": "Indie / Shoegaze",
+    "folder": "Melancholic indiealt",
+    "tags": ["indie", "alt", "shoegaze"],
+    "features": {
+      "danceability": 0.42,
+      "energy": 0.45,
+      "valence": 0.30,
+      "acousticness": 0.50,
+      "instrumentalness": 0.15,
+      "speechiness": 0.05,
+      "tempo": 105.0
+    }
+  },
+  "prb_latin_01": {
+    "title": "Latin Night",
+    "description": "Hot, rhythmic, irresistible",
+    "genre_hint": "Latin / Afrobeats",
+    "folder": "Upbeat latinafrobeats",
+    "tags": ["latin", "afrobeats", "dance_pop"],
+    "features": {
+      "danceability": 0.92,
+      "energy": 0.80,
+      "valence": 0.85,
+      "acousticness": 0.12,
+      "instrumentalness": 0.04,
+      "speechiness": 0.10,
+      "tempo": 122.0
+    }
+  },
+  "prb_jazz_01": {
+    "title": "Cinematic Score",
+    "description": "Balanced, deep, genre-crossing",
+    "genre_hint": "Jazz / Classical Crossover",
+    "folder": "Dark orchestralcinematic",
+    "tags": ["jazz", "classical", "world"],
+    "features": {
+      "danceability": 0.55,
+      "energy": 0.38,
+      "valence": 0.55,
+      "acousticness": 0.75,
+      "instrumentalness": 0.85,
+      "speechiness": 0.04,
+      "tempo": 98.0
+    }
+  },
+  "prb_folk_01": {
+    "title": "Acoustic Solitude",
+    "description": "Bare, honest, emotionally raw",
+    "genre_hint": "Folk / Acoustic",
+    "folder": "Soft acoustic singer-songwriter",
+    "tags": ["folk", "acoustic_sad", "singer_songwriter"],
+    "features": {
+      "danceability": 0.28,
+      "energy": 0.18,
+      "valence": 0.22,
+      "acousticness": 0.95,
+      "instrumentalness": 0.05,
+      "speechiness": 0.06,
+      "tempo": 68.0
+    }
+  },
+  "prb_rap_01": {
+    "title": "Lyric Heavy",
+    "description": "Word-dense, rhythmic, storytelling",
+    "genre_hint": "Hip-Hop / Spoken Word",
+    "folder": "rap-hip-hop",
+    "tags": ["rap", "spoken_word", "rhythmic"],
+    "features": {
+      "danceability": 0.80,
+      "energy": 0.75,
+      "valence": 0.60,
+      "acousticness": 0.05,
+      "instrumentalness": 0.01,
+      "speechiness": 0.50,
+      "tempo": 100.0
+    }
+  },
+  "new_bollywood_01": {
+    "title": "Bollywood Romance",
+    "description": "Warm, melodic, emotional Indian pop",
+    "genre_hint": "Bollywood / Indian Pop",
+    "folder": "bollywood",
+    "tags": ["bollywood", "indian", "melodic"],
+    "features": {
+      "danceability": 0.65,
+      "energy": 0.55,
+      "valence": 0.70,
+      "acousticness": 0.45,
+      "instrumentalness": 0.10,
+      "speechiness": 0.07,
+      "tempo": 95.0
+    }
+  },
+  "new_kpop_01": {
+    "title": "K-Pop Bright",
+    "description": "Polished, energetic, produced",
+    "genre_hint": "K-Pop",
+    "folder": "kpop",
+    "tags": ["kpop", "bright", "produced"],
+    "features": {
+      "danceability": 0.82,
+      "energy": 0.80,
+      "valence": 0.75,
+      "acousticness": 0.05,
+      "instrumentalness": 0.08,
+      "speechiness": 0.12,
+      "tempo": 130.0
+    }
+  },
+  "new_blues_01": {
+    "title": "Blues Soul",
+    "description": "Raw, emotional, guitar-driven",
+    "genre_hint": "Blues / Soul",
+    "folder": "blues",
+    "tags": ["blues", "soul", "raw"],
+    "features": {
+      "danceability": 0.45,
+      "energy": 0.55,
+      "valence": 0.30,
+      "acousticness": 0.65,
+      "instrumentalness": 0.25,
+      "speechiness": 0.06,
+      "tempo": 78.0
+    }
+  },
+  "new_reggae_01": {
+    "title": "Reggae Vibes",
+    "description": "Rhythmic, warm, laid-back",
+    "genre_hint": "Reggae / Dancehall",
+    "folder": "reggae",
+    "tags": ["reggae", "warm", "rhythmic"],
+    "features": {
+      "danceability": 0.78,
+      "energy": 0.60,
+      "valence": 0.75,
+      "acousticness": 0.30,
+      "instrumentalness": 0.15,
+      "speechiness": 0.09,
+      "tempo": 88.0
+    }
+  },
+  "new_classical_01": {
+    "title": "Classical Orchestra",
+    "description": "Complex, structured, no lyrics",
+    "genre_hint": "Classical",
+    "folder": "classical",
+    "tags": ["classical", "orchestral", "complex"],
+    "features": {
+      "danceability": 0.25,
+      "energy": 0.45,
+      "valence": 0.50,
+      "acousticness": 0.85,
+      "instrumentalness": 0.98,
+      "speechiness": 0.03,
+      "tempo": 108.0
+    }
+  }
+}
+  
+
+

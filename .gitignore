@@ -1,0 +1,135 @@
+# ==============================================================================
+# SonicDNA .gitignore
+# Prevents accidental leaks of credentials, environment variables, large datasets,
+# OS/IDE clutter, build artifacts, virtual environments, and test caches.
+# ==============================================================================
+
+# ── Secrets, Credentials & Environment Files ─────────────────────────────────
+# NEVER commit credentials or API keys to version control
+.env
+.env.*
+.ENV
+.ENV.*
+*.env
+*.ENV
+backend/.ENV
+backend/.env
+backend/.env.*
+backend/.ENV.*
+
+# Private keys, certificates, and credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+
+# ── Python & Bytecode Artifacts ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Virtual Environments ─────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+ENV.bak/
+
+# ── Testing, Coverage & Quality Assurance ───────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+
+# ── Logs, Debugging & Process Dumps ──────────────────────────────────────────
+*.log
+*.err.log
+*.out.log
+uvicorn-*.log
+logs/
+*.pid
+*.seed
+
+# ── Local SQLite, Databases & Backups ────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# ── Local Data, Events & Audio Clips ─────────────────────────────────────────
+backend/data/feedback_events.jsonl
+backend/data/clips/
+backend/data/*.csv
+backend/data/**/*.mp3
+backend/data/**/*.wav
+backend/data/**/*.ogg
+!backend/data/clip_features.json
+
+# ── Operating System Clutter ─────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ── IDEs & Editors ───────────────────────────────────────────────────────────
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ── Antigravity / Agent Working Directories ──────────────────────────────────
+.superpowers/
+.agent/
+.system_generated/
+backend/graphify-out/
