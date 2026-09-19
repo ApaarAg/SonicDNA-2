@@ -1385,19 +1385,28 @@ You."></h2>
         draw();
       }
 
+      const playAudio = async (audioElement) => {
+        try {
+          await audioElement.play();
+          return true;
+        } catch (err) {
+          console.warn("Autoplay blocked by browser policy. Requiring manual click.", err);
+          return false;
+        }
+      };
+
       function toggleClipAudio() {
         const playIcon = document.getElementById('clip-play-icon');
         if (clipAudio.paused) {
-          // Clear any active fade
           if (fadeInterval) {
             clearInterval(fadeInterval);
             fadeInterval = null;
           }
           clipAudio.volume = 1.0;
-          clipAudio.play().then(() => {
-            if (playIcon) playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-          }).catch(e => {
-            showToast('Audio playback blocked. Click play to listen.');
+          playAudio(clipAudio).then(success => {
+            if (success && playIcon) {
+              playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+            }
           });
         } else {
           clipAudio.pause();
@@ -1412,18 +1421,34 @@ You."></h2>
         }
         clipAudio.volume = 1.0;
         
+        const fallbackUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+        if (!url || url.includes('undefined') || url.includes('null')) {
+          url = fallbackUrl;
+        }
+        
         const playIcon = document.getElementById('clip-play-icon');
         if (clipAudio.src !== url) {
           clipAudio.src = url;
           clipAudio.load();
         }
         
-        clipAudio.play().then(() => {
-          if (playIcon) playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-          initWaveformVisualizer();
-        }).catch(e => {
-          console.warn('Auto-play blocked:', e);
-          if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        clipAudio.onerror = () => {
+          if (clipAudio.src !== fallbackUrl) {
+            console.warn("Clip 404 or unsupported. Falling back to hosted MP3.");
+            clipAudio.src = fallbackUrl;
+            clipAudio.load();
+            playAudio(clipAudio).then(success => {
+              if (success && playIcon) playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+            });
+          }
+        };
+        
+        playAudio(clipAudio).then(success => {
+          if (success && playIcon) {
+            playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+          } else if (playIcon) {
+            playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+          }
           initWaveformVisualizer();
         });
       }
@@ -1514,7 +1539,7 @@ You."></h2>
             else if (key.startsWith('india')) imgName = 'india';
             else if (key === 'brazil') imgName = 'brazil';
             else if (key === 'france') imgName = 'france';
-            const bgImage = `images/${imgName}.png`;
+            const bgImage = `https://raw.githubusercontent.com/ApaarAg/SonicDNA-2/main/images/${imgName}.png`;
 
             return `
               <button class="region-select-btn group relative overflow-hidden text-left p-3.5 rounded-xl border ${isSelected ? 'border-white bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.05)]' : 'border-white/10 bg-white/[0.01] hover:border-white/20'} transition-all min-h-[75px]" data-region="${key}">
@@ -4324,7 +4349,7 @@ without a passport."></h2>
       async function loadOutlineMap() {
         if (outlineMapLoaded) return outlineMapHTML;
         try {
-          const resp = await fetch('/world-map.svg');
+          const resp = await fetch('https://raw.githubusercontent.com/ApaarAg/SonicDNA-2/main/world-map.svg');
           if (!resp.ok) throw new Error("Local map file not found");
           const svgText = await resp.text();
           
