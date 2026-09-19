@@ -3,6 +3,7 @@
 # Connects all backend services properly
 # ============================================
 
+import asyncio  # <--- Add this line
 import json
 import base64
 import hashlib
