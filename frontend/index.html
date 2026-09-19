@@ -1749,6 +1749,12 @@ You."></h2>
           state.step = 'completed';
           renderStep();
         } catch (e) {
+          if (e.message && e.message.includes('meaningful answer')) {
+            showToast(e.message);
+            window.journeyState.step = 'quiz';
+            renderStep();
+            return;
+          }
           showToast('Analysis failed. Restarting calibration.');
           window.journeyState.step = 'spotify';
           renderStep();
@@ -6201,6 +6207,11 @@ in the songs."></h2>
       fetchRecommendations(sonicState.cluster_id);
 
     } catch (err) {
+      if (err.message && err.message.includes('meaningful answer')) {
+        document.getElementById('sonic-backend-loading')?.remove();
+        showToast(err.message);
+        return;
+      }
       console.warn('[SonicDNA] Backend analysis failed, using client result:', err.message);
       // Remove loading banner if it exists
       document.getElementById('sonic-backend-loading')?.remove();
@@ -6831,7 +6842,7 @@ in the songs."></h2>
           if (!status.connected) {
             showToast('Spotify not connected. Redirecting to login…');
             const returnTo = window.location.href;
-            window.location.href = `${API}/spotify/login?session_token=${encodeURIComponent(sonicState.session_token)}&return_to=${encodeURIComponent(returnTo)}`;
+            window.location.href = `${API}/auth/login?session_token=${encodeURIComponent(sonicState.session_token)}&return_to=${encodeURIComponent(returnTo)}`;
             return;
           }
 

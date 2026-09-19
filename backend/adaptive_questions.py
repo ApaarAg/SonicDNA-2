@@ -320,9 +320,14 @@ class GeminiQuestionProvider:
         uncovered = [d for d in DIMENSION_ORDER if d not in covered]
         target_dim = uncovered[0] if uncovered else DIMENSION_ORDER[qnum % len(DIMENSION_ORDER)]
 
-        prompt = f"""Generate the next adaptive music psychology question.
+        import random
+        angles = ["rhythm and movement", "nostalgic memory", "solitude and introspection", "physical sensation", "sonic texture and atmosphere", "lyrical storytelling", "social energy"]
+        seed_angle = random.choice(angles)
+
+        prompt = f"""Generate a unique, deeply evocative psychographic question about music listening habits. DO NOT repeat standard questions.
 Question Number: {qnum}
 Target Dimension to Probe: {target_dim}
+Thematic Angle to Explore: {seed_angle}
 Previous Answers: {json.dumps(prev_answers)}
 Already Asked: {json.dumps(asked)}
 Allowed Dimensions: {json.dumps(DIMENSION_ORDER)}
@@ -342,8 +347,8 @@ Return ONLY a valid JSON object matching this schema:
                 from google.genai import types
                 from gemini_service import AdaptiveQuestionResponse
                 config = types.GenerateContentConfig(
-                    system_instruction="You are an expert cognitive music psychologist generating concise, non-repetitive adaptive questions as strictly structured JSON.",
-                    temperature=0.5,
+                    system_instruction="You are an expert cognitive music psychologist generating concise, highly unique, and deeply evocative adaptive questions. Avoid repeating any standard or previously asked questions. Output strictly as structured JSON.",
+                    temperature=0.7,
                     response_mime_type="application/json",
                     response_schema=AdaptiveQuestionResponse,
                 )

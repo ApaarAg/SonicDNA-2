@@ -1352,6 +1352,19 @@ Guidelines:
         return {"message": "You are the only person who hears what your library means."}
 
 
+def is_meaningful_answer(text: str) -> bool:
+    text = text.lower().strip()
+    if len(text) < 4:
+        return False
+    if any(smash in text for smash in ["asdf", "qwerty", "zxcv", "qwer", "1234"]):
+        return False
+    if not re.search(r'[aeiouy]', text):
+        return False
+    if re.search(r'(.{1,2})\1{4,}', text):
+        return False
+    return True
+
+
 @app.post("/analyze_adaptive")
 def analyze_adaptive(payload: AdaptiveOpenPayload):
     """
@@ -1361,6 +1374,13 @@ def analyze_adaptive(payload: AdaptiveOpenPayload):
     answers = [a.strip() for a in payload.answers if a.strip()]
     if not answers:
         raise HTTPException(status_code=400, detail="At least one answer required.")
+
+    valid_answers = [a for a in answers if is_meaningful_answer(a)]
+    if len(valid_answers) < len(answers):
+        return JSONResponse(status_code=400, content={
+            "valid": False,
+            "error": "Please enter a meaningful answer about your music preferences to generate your Taste Genome."
+        })
 
     q1 = answers[0] if len(answers) > 0 else "Not provided"
     q2 = answers[1] if len(answers) > 1 else "Not provided"
