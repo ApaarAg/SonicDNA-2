@@ -580,6 +580,28 @@ def get_taste_drift_history(
         )
         # Reverse so oldest is first in the returned list
         rows = list(reversed(rows))
+        
+        if not rows:
+            # Fallback to current genome_snapshot
+            current_snap = (
+                db.query(GenomeSnapshot)
+                .filter(GenomeSnapshot.user_id == user_id)
+                .order_by(desc(GenomeSnapshot.timestamp))
+                .first()
+            )
+            if current_snap and current_snap.genome_data:
+                g = current_snap.genome_data
+                return [{
+                    "id": str(current_snap.id),
+                    "user_id": str(current_snap.user_id),
+                    "recorded_at": current_snap.timestamp.isoformat() if current_snap.timestamp else None,
+                    "energy": g.get("energy", 0.5),
+                    "valence": g.get("valence", 0.5),
+                    "danceability": g.get("danceability", 0.5),
+                    "acousticness": g.get("acousticness", 0.5),
+                    "active_archetype": current_snap.archetype,
+                    "source": "quiz"
+                }]
         return [
             {
                 "id": str(r.id),

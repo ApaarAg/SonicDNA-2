@@ -1091,6 +1091,12 @@ You."></h2>
       clipAudio.onended = () => {
         const playIcon = document.getElementById('clip-play-icon');
         if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+        // Auto-proceed to next clip
+        const nextBtn = document.getElementById('btn-clip-next');
+        if (nextBtn) {
+          nextBtn.disabled = false;
+          nextBtn.click();
+        }
       };
       let clipAudioInterval = null;
 
@@ -1465,13 +1471,15 @@ You."></h2>
           a.currentTime = 0;
           a.src = '';
         });
-        if (typeof clipAudio !== 'undefined') {
+        if (typeof clipAudio !== 'undefined' && clipAudio) {
           clipAudio.pause();
+          clipAudio.currentTime = 0;
           const playIcon = document.getElementById('clip-play-icon');
           if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
         }
-        if (typeof recAudio !== 'undefined') {
+        if (typeof recAudio !== 'undefined' && recAudio) {
           recAudio.pause();
+          recAudio.currentTime = 0;
         }
       }
 
@@ -1569,7 +1577,8 @@ You."></h2>
             else if (key.startsWith('india')) imgName = 'india';
             else if (key === 'brazil') imgName = 'brazil';
             else if (key === 'france') imgName = 'france';
-            const bgImage = `https://raw.githubusercontent.com/ApaarAg/SonicDNA-2/main/images/${imgName}.png`;
+            // Use a local fallback for broken region images
+            const bgImage = `/assets/flags/default.svg`;
 
             return `
               <button class="region-select-btn group relative overflow-hidden text-left p-3.5 rounded-xl border ${isSelected ? 'border-white bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.05)]' : 'border-white/10 bg-white/[0.01] hover:border-white/20'} transition-all min-h-[75px]" data-region="${key}">
@@ -3086,36 +3095,47 @@ as you."></h2>
         `).join('');
       }
 
-      btn && btn.addEventListener('click', () => {
+      btn && btn.addEventListener('click', async () => {
         if (generating) return;
         generating = true;
-        const reading = window.__sonicReading;
-        const tName = titles[Math.floor(Math.random()*titles.length)];
-        title.textContent = reading ? `${reading.primary.replace('The ','').toUpperCase()} · ${tName}` : tName;
-        status.textContent = 'GENERATING · ANALYSING GENOME';
-        bar.style.width = '0%';
-        list.innerHTML = '';
-        let p = 0;
-        const tick = () => {
-          p = Math.min(100, p + 4 + Math.random()*8);
-          bar.style.width = p + '%';
-          if (p < 35) status.textContent = 'GENERATING · ANALYSING GENOME';
-          else if (p < 70) status.textContent = 'GENERATING · SEQUENCING TRACKS';
-          else if (p < 100) status.textContent = 'GENERATING · MIXING TRANSITIONS';
-          if (p < 100) setTimeout(tick, 90);
-          else {
-            status.textContent = 'READY · ' + tracks.length + ' TRACKS · 47 MIN · ADDED TO YOUR LIBRARY';
-            renderTrackList(tracks);
-            generating = false;
+        
+        status.textContent = 'GENERATING · CREATING SPOTIFY PLAYLIST';
+        bar.style.width = '30%';
+        
+        try {
+          const result = await api('POST', `/recommendations/playlist`, {
+            user_id: sonicState.user_id,
+            name: title.textContent,
+          });
+          bar.style.width = '100%';
+          if (result.success && result.playlist_url) {
+            status.innerHTML = `READY · <a href="${result.playlist_url}" target="_blank" class="underline text-emerald-300">OPEN ON SPOTIFY</a>`;
+          } else {
+            status.textContent = 'SAVED · OFFLINE PLAYLIST GENERATED';
           }
-        };
-        tick();
+        } catch (e) {
+          status.textContent = 'FAILED · COULD NOT CREATE PLAYLIST';
+        } finally {
+          generating = false;
+        }
       });
 
       // react to quiz reading
-      window.addEventListener('sonic:reading', (e) => {
+      window.addEventListener('sonic:reading', async (e) => {
         const r = e.detail;
         meta.textContent = `12 TRACKS · TUNED TO ${r.primary.replace('The ','').toUpperCase()}`;
+        title.textContent = `${r.primary.replace('The ','').toUpperCase()} · Playlist`;
+        
+        try {
+          const result = await api('GET', `/recommendations/${sonicState.user_id}`);
+          if (result.tracks && result.tracks.length > 0) {
+             const items = result.tracks.map(t => ({ t: t.title, a: t.artist, len: '3:00' }));
+             sonicState.playlistTracks = items;
+             renderTrackList(items);
+          }
+        } catch (err) {
+          console.warn('[SonicDNA] Failed to fetch recommendations', err);
+        }
       });
     })();
   </script>
@@ -4379,7 +4399,7 @@ without a passport."></h2>
       async function loadOutlineMap() {
         if (outlineMapLoaded) return outlineMapHTML;
         try {
-          const resp = await fetch('https://raw.githubusercontent.com/ApaarAg/SonicDNA-2/main/world-map.svg');
+          const resp = await fetch('/assets/world-map.svg');
           if (!resp.ok) throw new Error("Local map file not found");
           const svgText = await resp.text();
           
@@ -6061,18 +6081,26 @@ in the songs."></h2>
   }
 
   /* ── 3. BOOT — runs on DOMContentLoaded ──────────────────────────────── */
+  function showScene(sceneId) {
+    window.location.hash = '#scene-' + sceneId;
+  }
+
   async function boot() {
     // 1. Capture session_token if returning from OAuth redirect
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('session_token');
+      const spotifyStatus = urlParams.get('spotify');
       if (urlToken) {
         localStorage.setItem('sonic_session', urlToken);
-        urlParams.delete('session_token');
-        urlParams.delete('spotify');
-        const cleanQuery = urlParams.toString();
-        const cleanUrl = window.location.pathname + (cleanQuery ? '?' + cleanQuery : '') + window.location.hash;
-        window.history.replaceState({}, document.title, cleanUrl);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        if (spotifyStatus === 'connected') {
+           showScene('quiz');
+           if (window.journeyState) {
+             window.journeyState.step = 'region';
+             if (typeof window.journeyState.render === 'function') window.journeyState.render();
+           }
+        }
       }
     } catch (urlErr) {
       console.warn('[SonicDNA] Failed to parse URL session token:', urlErr);
@@ -6263,9 +6291,19 @@ in the songs."></h2>
       fetchRecommendations(sonicState.cluster_id);
 
     } catch (err) {
-      if (err.message && err.message.includes('meaningful answer')) {
+      if (err.message && (err.message.includes('meaningful answer') || err.message.includes('gibberish') || err.message.includes('exceeds') || err.message.includes('required'))) {
         document.getElementById('sonic-backend-loading')?.remove();
-        showToast(err.message);
+        
+        let existingBanner = document.getElementById('sonic-error-banner');
+        if (!existingBanner) {
+          const banner = document.createElement('div');
+          banner.id = 'sonic-error-banner';
+          banner.className = 'mt-4 w-full max-w-lg mx-auto bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-xl text-xs md:text-sm text-center font-mono';
+          const stage = document.getElementById('quiz-stage');
+          stage?.appendChild(banner);
+          existingBanner = banner;
+        }
+        existingBanner.textContent = "Error: " + err.message;
         return;
       }
       console.warn('[SonicDNA] Backend analysis failed, using client result:', err.message);
@@ -6792,17 +6830,16 @@ in the songs."></h2>
       }, 120);
 
       try {
-        const result = await api('POST', `/playlist/session/${cid}`, {
-          session_token: sonicState.session_token,
-          target_minutes: 47,
+        const result = await api('POST', `/recommendations/playlist`, {
+          user_id: sonicState.user_id,
+          name: tName,
         });
 
         clearInterval(progTick);
         if (bar) bar.style.width = '100%';
 
-        const tracks = result.tracks || [];
-        sonicState.playlistTracks = tracks;
-        sonicState.playlistName = result.playlist_name || tName;
+        const tracks = sonicState.playlistTracks || window.__sonicReading?.tracks || [];
+        sonicState.playlistName = tName;
 
         if (status) status.textContent = `READY · ${tracks.length} TRACKS · ${result.actual_minutes || 47} MIN · ADDED TO YOUR LIBRARY`;
         if (title) title.textContent = result.playlist_name || tName;
@@ -7417,10 +7454,19 @@ in the songs."></h2>
     const name = nameEl?.value?.trim();
     const email = emailEl?.value?.trim();
 
-    if (!name) {
+    if (!name || name.length <= 1) {
       nameEl?.focus();
-      showToast('Enter a display name to save your reading.');
+      showToast('Enter a valid display name (at least 2 characters).');
       return;
+    }
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        emailEl?.focus();
+        showToast('Please enter a valid email address.');
+        return;
+      }
     }
 
     if (btn) { btn.innerHTML = '<span class="label">Saving…</span>'; btn.disabled = true; }

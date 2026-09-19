@@ -835,7 +835,7 @@ def _redirect_with_spotify_status(
     if session_token:
         query_params["session_token"] = session_token
     params = urllib.parse.urlencode(query_params)
-    return RedirectResponse(f"{base_url}{separator}{params}")
+    return RedirectResponse(f"{base_url}{separator}{params}", status_code=307)
 
 
 def _average_tracks(tracks: List[dict], key: str, default: float = 0.5) -> float:
@@ -1407,6 +1407,10 @@ def analyze_adaptive(payload: AdaptiveOpenPayload):
             try:
                 gemini_profile = gemini_service.analyze_psychological_answers(answers, user_id=user_id)
                 print(f"[analysis.adaptive.gemini_ok] archetype={gemini_profile.archetype}")
+            except ValueError as ve:
+                if str(ve) == "INVALID_INPUT":
+                    raise HTTPException(status_code=400, detail="INVALID_INPUT: Please enter a meaningful answer.")
+                print(f"[analysis.adaptive.gemini_fallback] error={_redact_for_log(ve)}")
             except Exception as ge:
                 print(f"[analysis.adaptive.gemini_fallback] error={_redact_for_log(ge)}")
 
@@ -2608,6 +2612,46 @@ def get_user_recommendations(user_id: str):
         "tracks": tracks_out,
         "playlist_url": "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
     }
+
+class RecommendationRequest(BaseModel):
+    user_id: str
+
+@app.post("/recommendations/generate")
+def generate_recommendations(payload: RecommendationRequest):
+    user_id = payload.user_id
+    conn = get_spotify_connection(user_id)
+    if not conn or not conn.get("access_token") or spotify_oauth.token_expired(conn):
+        snap = db_session.query(GenomeSnapshot).filter(GenomeSnapshot.user_id == user_id).order_by(GenomeSnapshot.timestamp.desc()).first()
+        energy = snap.genome.get("energy", 0.0) if snap and snap.genome else 0.0
+        valence = snap.genome.get("valence", 0.0) if snap and snap.genome else 0.0
+        
+        # Hard fallback: generate 10 tracks using energy and valence
+        fallback_tracks = []
+        for i in range(10):
+            fallback_tracks.append({
+                "id": f"fallback_{i}",
+                "name": f"Curated Track {i+1}",
+                "artist": "SonicDNA",
+                "album": "The Journey",
+                "preview_url": None,
+                "image_url": "https://via.placeholder.com/300",
+                "energy": energy,
+                "valence": valence
+            })
+        return fallback_tracks
+    
+    # Try fetching from Spotify Web API
+    try:
+        import requests
+        headers = {"Authorization": f"Bearer {conn['access_token']}"}
+        res = requests.get("https://api.spotify.com/v1/recommendations?seed_genres=pop,electronic&limit=10", headers=headers, timeout=5)
+        if res.status_code == 200:
+            tracks = res.json().get("tracks", [])
+            return [{"id": t.get("id"), "name": t.get("name"), "artist": t["artists"][0]["name"] if t.get("artists") else "Unknown", "album": t.get("album", {}).get("name", "Unknown"), "preview_url": t.get("preview_url"), "image_url": t.get("album", {}).get("images", [{}])[0].get("url") if t.get("album", {}).get("images") else None, "energy": 0.5, "valence": 0.5} for t in tracks]
+    except:
+        pass
+        
+    return []
 
 # ════════════════════════════════════════════
 # METADATA ENDPOINTS

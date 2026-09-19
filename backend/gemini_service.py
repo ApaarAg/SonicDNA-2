@@ -69,6 +69,8 @@ class AdaptiveQuestionResponse(BaseModel):
 
 MUSIC_PSYCHOLOGIST_PROMPT = """You are an expert cognitive music psychologist and psychometrician specializing in personality theory (the Big Five / OCEAN model), affective neuroscience, and musical taste genomes.
 
+First, analyze the user's input. If the input consists of keyboard mashes, single letters, or non-sensical gibberish, return ONLY the exact word 'INVALID_INPUT'.
+
 Your mission is to perform a deep psycho-acoustic analysis of a listener's open-ended reflections on music, sound, lyrics, emotional regulation, and listening rituals.
 
 Analyze their responses against the Big Five (OCEAN) traits:
@@ -134,8 +136,14 @@ class GeminiService:
                     config=config,
                 )
                 if response.text:
+                    if response.text.strip() == "INVALID_INPUT":
+                        raise ValueError("INVALID_INPUT")
                     parsed = json.loads(response.text)
                     return MusicTasteProfileResponse.model_validate(parsed)
+            except ValueError as ve:
+                if str(ve) == "INVALID_INPUT":
+                    raise ve
+                print(f"[gemini.analyze_error] Falling back to structured heuristic: {ve}")
             except Exception as e:
                 print(f"[gemini.analyze_error] Falling back to structured heuristic: {e}")
 

@@ -576,6 +576,9 @@ No markdown, no extra text. Just the JSON."""
 
     raw_text = message.choices[0].message.content.strip()
 
+    if raw_text == "INVALID_INPUT":
+        raise ValueError("INVALID_INPUT")
+
     try:
         genome_data = _json.loads(raw_text)
     except _json.JSONDecodeError:

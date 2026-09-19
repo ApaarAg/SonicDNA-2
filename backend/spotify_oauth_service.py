@@ -140,10 +140,13 @@ class SpotifyOAuthService:
         return bool(self.client_id and self.client_secret and self.redirect_uri)
 
     def make_state(self, session_token: Optional[str] = None, return_to: Optional[str] = None) -> str:
+        # Generate PKCE code verifier (random 64-character string)
+        code_verifier = secrets.token_urlsafe(64)
         payload = {
             "session_token": session_token or "",
             "return_to": _safe_return_to(return_to),
             "nonce": secrets.token_urlsafe(12),
+            "cv": code_verifier,
             "exp": int(time.time()) + 600,
         }
         encoded = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
@@ -164,17 +167,26 @@ class SpotifyOAuthService:
             return None
 
     def authorization_url(self, state: str) -> str:
+        payload = self.parse_state(state)
+        code_verifier = payload.get("cv") if payload else ""
+        code_challenge = _b64(hashlib.sha256(code_verifier.encode("ascii")).digest()).replace("=", "")
+        
         params = {
             "client_id": self.client_id,
             "response_type": "code",
             "redirect_uri": self.redirect_uri,
             "scope": SPOTIFY_SCOPES,
             "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
             "show_dialog": "false",
         }
         return f"{SPOTIFY_ACCOUNTS_URL}/authorize?{urlencode(params)}"
 
-    def exchange_code(self, code: str) -> dict:
+    def exchange_code(self, code: str, state: str) -> dict:
+        payload = self.parse_state(state)
+        code_verifier = payload.get("cv") if payload else ""
+        
         response = requests.post(
             f"{SPOTIFY_ACCOUNTS_URL}/api/token",
             data={
@@ -183,6 +195,7 @@ class SpotifyOAuthService:
                 "redirect_uri": self.redirect_uri,
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
+                "code_verifier": code_verifier,
             },
             timeout=15,
         )
