@@ -118,7 +118,22 @@ class SpotifyOAuthService:
     def __init__(self, state_secret: str):
         self.client_id = os.getenv("SPOTIFY_CLIENT_ID")
         self.client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-        self.redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI")
+
+        # Primary source: explicit env var (must be registered in the Spotify Developer Console)
+        redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "").strip()
+
+        # Fallback: Render injects RENDER_EXTERNAL_URL automatically (e.g. https://sonicdna-2.onrender.com)
+        # so we can derive the callback path without any manual config if the var is empty.
+        if not redirect_uri:
+            render_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+            if render_url:
+                redirect_uri = f"{render_url}/auth/callback"
+                print(
+                    f"[spotify_oauth] SPOTIFY_REDIRECT_URI not set; "
+                    f"derived from RENDER_EXTERNAL_URL: {redirect_uri}"
+                )
+
+        self.redirect_uri = redirect_uri or None
         self.state_secret = state_secret
 
     def configured(self) -> bool:
