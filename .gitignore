@@ -97,7 +97,6 @@ logs/
 # ── Local Data, Events & Audio Clips ─────────────────────────────────────────
 backend/data/feedback_events.jsonl
 backend/data/clips/
-backend/data/*.csv
 backend/data/**/*.mp3
 backend/data/**/*.wav
 backend/data/**/*.ogg
