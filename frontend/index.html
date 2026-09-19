@@ -3069,6 +3069,11 @@ as you."></h2>
         <div class="lg:col-span-7">
           <div class="reveal flex items-center gap-3 mb-8">
             <span class="mono text-[10px] tracking-[0.35em] text-violet/90">SCENE · EVOLUTION</span>
+            <!-- Live archetype pill — populated by loadDriftTimeline() -->
+            <span id="drift-archetype-pill" class="hidden items-center gap-1.5 px-2.5 py-1 rounded-full border border-violet/30 bg-violet/10 mono text-[9px] tracking-[0.2em] text-violet/80">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet/70 animate-pulse"></span>
+              <span id="drift-archetype-name">—</span>
+            </span>
           </div>
           <h2 class="display text-[12vw] md:text-[5.4vw] leading-[0.95] font-light"
               data-split="You are not the
@@ -3478,6 +3483,191 @@ were last winter."></h2>
         }
       };
     })();
+  </script>
+
+  <!-- ========================= DRIFT TIMELINE CHART AUGMENTATION ========================= -->
+  <script>
+  /**
+   * loadDriftTimeline()
+   * ───────────────────
+   * Fetches longitudinal taste-drift data from GET /api/evolution/{user_id}
+   * (backed by the TasteDriftSnapshot table written by taste_evolution.py).
+   *
+   * Normalizes each drift snapshot into the same shape the existing shift-chart
+   * seed() function already understands — { taken_at, genome:{...}, archetype_name }
+   * — so the beautiful SVG chart and scrubber work without modification.
+   *
+   * When drift data has ≥ 2 points it **replaces** sonicState.timeline for the
+   * chart (richer, automatically refreshed weekly data).  It never replaces
+   * sonicState.timeline for the genome/radar panels (those still use quiz results).
+   *
+   * Also renders a "current archetype" pill in the scene header and annotates
+   * the latest data-point on the SVG with an archetype label.
+   */
+  (function () {
+    // Z-score proxy so the chart value scaling works the same as quiz data.
+    // Quiz data stores raw z-scores in genome; drift data stores 0-1 floats.
+    // We convert: z ≈ (x - 0.5) * 4  →  brings 0.0→-2, 0.5→0, 1.0→+2.
+    function toZScore(v) {
+      return (parseFloat(v || 0.5) - 0.5) * 4;
+    }
+
+    // Adapt a raw drift snapshot { date, energy, valence, danceability, acousticness,
+    // archetype, source } into the genome_snapshot shape the chart expects.
+    function normalizeDriftSnap(snap) {
+      return {
+        taken_at: snap.date,
+        archetype_name: snap.archetype || null,
+        secondary_name: null,
+        archetype_id: null,
+        primary_pct: null,
+        secondary_pct: null,
+        genome: {
+          energy:          toZScore(snap.energy),
+          valence:         toZScore(snap.valence),
+          danceability:    toZScore(snap.danceability),
+          acousticness:    toZScore(snap.acousticness),
+          instrumentalness: 0,
+          speechiness:     0,
+          tempo:           0,
+        },
+        _source: 'drift',
+      };
+    }
+
+    // Render the archetype pill in the evolution scene header.
+    function renderArchetypePill(archetypeName) {
+      const pill = document.getElementById('drift-archetype-pill');
+      const nameEl = document.getElementById('drift-archetype-name');
+      if (!pill || !archetypeName) return;
+      nameEl.textContent = archetypeName.toUpperCase();
+      pill.classList.remove('hidden');
+      pill.classList.add('flex');
+    }
+
+    // Annotate the rightmost data-point on the SVG with the latest archetype label.
+    function annotateLatestPoint(archetypeName) {
+      const svg = document.getElementById('shift-chart');
+      if (!svg || !archetypeName) return;
+
+      // Remove any previous annotation
+      const old = svg.querySelector('.drift-archetype-annotation');
+      if (old) old.remove();
+
+      // The chart's viewBox is 1200×420; rightmost data point is near x=1170.
+      const W = 1200, padR = 30, padT = 30, padB = 40;
+      const x = W - padR - 2;
+      const y = padT + 10;
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.classList.add('drift-archetype-annotation');
+
+      // Pill background
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      const label = archetypeName.length > 22 ? archetypeName.slice(0, 20) + '…' : archetypeName;
+      const rectW = Math.min(label.length * 5.6 + 16, 220);
+      rect.setAttribute('x', x - rectW);
+      rect.setAttribute('y', y - 10);
+      rect.setAttribute('width', rectW);
+      rect.setAttribute('height', 18);
+      rect.setAttribute('rx', '9');
+      rect.setAttribute('fill', 'rgba(139,92,246,0.18)');
+      rect.setAttribute('stroke', 'rgba(139,92,246,0.45)');
+      rect.setAttribute('stroke-width', '0.8');
+
+      // Pulse dot
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', x - rectW + 8);
+      dot.setAttribute('cy', y - 1);
+      dot.setAttribute('r', '3');
+      dot.setAttribute('fill', '#8B5CF6');
+
+      // Text
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', x - rectW + 16);
+      text.setAttribute('y', y + 3);
+      text.setAttribute('fill', 'rgba(167,139,250,0.9)');
+      text.setAttribute('font-size', '8');
+      text.setAttribute('font-family', 'Geist Mono, monospace');
+      text.setAttribute('letter-spacing', '0.08em');
+      text.textContent = label.toUpperCase();
+
+      g.appendChild(rect);
+      g.appendChild(dot);
+      g.appendChild(text);
+      svg.appendChild(g);
+    }
+
+    // Expose the drift loader so boot() and loadTimeline() can call it.
+    window.__loadDriftTimeline = async function loadDriftTimeline() {
+      const userId = window.sonicState && window.sonicState.user_id;
+      if (!userId) return;
+
+      // Determine the API base (same origin as the page in prod; use env override if set).
+      const apiBase = window.SONIC_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : '');
+
+      try {
+        const resp = await fetch(`${apiBase}/api/evolution/${encodeURIComponent(userId)}?limit=90`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!resp.ok) return;
+
+        const json = await resp.json();
+        const rawSnaps = (json.snapshots || []).filter(s => s.date);
+
+        if (rawSnaps.length < 1) return;
+
+        // Normalize to chart-compatible shape (oldest-first — API already returns oldest-first)
+        const normalized = rawSnaps.map(normalizeDriftSnap);
+
+        // Latest archetype pill + SVG annotation
+        const latestArchetype = rawSnaps[rawSnaps.length - 1].archetype;
+        if (latestArchetype) {
+          renderArchetypePill(latestArchetype);
+        }
+
+        if (normalized.length < 2) return;  // need ≥2 points for a meaningful chart
+
+        // Inject drift data as the evolution timeline.
+        // We store it separately so the genome/radar panels still use quiz data.
+        window.sonicState.driftTimeline = normalized;
+        window.sonicState.timeline = normalized;  // chart reads from here
+
+        // Reveal the scene if it was hidden (no quiz snapshots)
+        const sceneShiftEl = document.getElementById('scene-shift');
+        const realDataContainer = document.getElementById('shift-real-data-container');
+        const onboardingMessage = document.getElementById('shift-onboarding-message');
+        if (sceneShiftEl) {
+          sceneShiftEl.classList.remove('hidden');
+          if (realDataContainer) realDataContainer.classList.remove('hidden');
+          if (onboardingMessage) onboardingMessage.classList.add('hidden');
+        }
+
+        // Update insight numbers using drift data
+        if (typeof updateEvolutionScene === 'function') {
+          updateEvolutionScene(normalized);
+        }
+
+        // Kick the chart to redraw with real data
+        if (window.__sonicShiftChart) {
+          window.__sonicShiftChart.update();
+        }
+
+        // Annotate the chart SVG *after* it renders (small timeout to let renderChart() finish)
+        setTimeout(() => annotateLatestPoint(latestArchetype), 120);
+
+        // Update readings count label
+        const scrubLabel = document.getElementById('shift-readings-label');
+        if (scrubLabel) {
+          scrubLabel.textContent = `DRAG TO SCRUB · ${normalized.length} AUTO-READINGS`;
+        }
+
+        console.log(`[SonicDNA] Drift timeline loaded: ${normalized.length} snapshots, latest archetype: ${latestArchetype}`);
+      } catch (err) {
+        console.warn('[SonicDNA] Drift timeline fetch failed:', err.message);
+      }
+    };
+  })();
   </script>
 
   <!-- ========================= SCENE 6 — COMPATIBILITY ========================= -->
@@ -5832,7 +6022,7 @@ in the songs."></h2>
           sonicState.session_token = stored;
           sonicState.user_id = me.user_id;
           // Load timeline in background
-          loadTimeline();
+          loadTimeline(); // also triggers loadDriftTimeline() internally
           // Update location
           updateUserLocation(me.user_id);
         } catch {
@@ -6827,6 +7017,10 @@ in the songs."></h2>
       }
     } catch (e) {
       console.warn('[SonicDNA] Timeline failed:', e.message);
+    }
+    // Layer drift data on top of quiz timeline (non-blocking)
+    if (window.__loadDriftTimeline) {
+      window.__loadDriftTimeline().catch(e => console.warn('[SonicDNA] Drift overlay failed:', e.message));
     }
   }
 
