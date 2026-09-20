@@ -504,11 +504,7 @@ async def production_safety_headers(request: Request, call_next):
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://sonic-dna-2.vercel.app",
-        os.getenv("FRONTEND_URL", "")
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -2643,7 +2639,7 @@ def generate_recommendations(payload: RecommendationRequest):
                 "energy": energy,
                 "valence": valence
             })
-        return fallback_tracks
+        return {"tracks": fallback_tracks, "narrative": "Based on your genome profile."}
     
     # Try fetching from Spotify Web API
     try:
@@ -2652,11 +2648,12 @@ def generate_recommendations(payload: RecommendationRequest):
         res = requests.get("https://api.spotify.com/v1/recommendations?seed_genres=pop,electronic&limit=10", headers=headers, timeout=5)
         if res.status_code == 200:
             tracks = res.json().get("tracks", [])
-            return [{"id": t.get("id"), "name": t.get("name"), "artist": t["artists"][0]["name"] if t.get("artists") else "Unknown", "album": t.get("album", {}).get("name", "Unknown"), "preview_url": t.get("preview_url"), "image_url": t.get("album", {}).get("images", [{}])[0].get("url") if t.get("album", {}).get("images") else None, "energy": 0.5, "valence": 0.5} for t in tracks]
+            tracks_data = [{"id": t.get("id"), "name": t.get("name"), "artist": t["artists"][0]["name"] if t.get("artists") else "Unknown", "album": t.get("album", {}).get("name", "Unknown"), "preview_url": t.get("preview_url"), "image_url": t.get("album", {}).get("images", [{}])[0].get("url") if t.get("album", {}).get("images") else None, "energy": 0.5, "valence": 0.5} for t in tracks]
+            return {"tracks": tracks_data, "narrative": "Based on your genome profile."}
     except:
         pass
         
-    return []
+    return {"tracks": [], "narrative": ""}
 
 # ════════════════════════════════════════════
 # METADATA ENDPOINTS
@@ -3156,7 +3153,7 @@ def auth_callback(
             return _redirect_with_spotify_status(return_to, "error", "missing_code")
 
         try:
-            token_data = spotify_oauth.exchange_code(code)
+            token_data = spotify_oauth.exchange_code(code, state)
             current_user = spotify_oauth.get_current_user(token_data["access_token"])
 
             # 1. Check if an existing session token was provided in state

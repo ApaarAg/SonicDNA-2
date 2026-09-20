@@ -20,6 +20,7 @@ from typing import Any, Dict, Generator, List, Optional
 from dotenv import load_dotenv
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Float,
@@ -34,7 +35,7 @@ from sqlalchemy import (
     or_,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker, validates
 from sqlalchemy.types import TypeDecorator
 
 
@@ -138,7 +139,13 @@ def get_conn():
 class User(Base):  # type: ignore[misc]
     """User ORM model with native UUID support and backward-compatible properties."""
     __tablename__ = "users"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        CheckConstraint(
+            "email IS NULL OR email LIKE '%_@__%.__%'",
+            name="valid_user_email"
+        ),
+        {"extend_existing": True},
+    )
 
     id = Column(GUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     display_name = Column(String(255), nullable=True)
@@ -147,6 +154,12 @@ class User(Base):  # type: ignore[misc]
     shadow_archetype = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @validates('email')
+    def validate_email(self, key, address):
+        if address and ("@" not in address or "." not in address.split("@")[-1]):
+            raise ValueError("Invalid email address format")
+        return address
 
     @property
     def username(self) -> Optional[str]:
@@ -414,7 +427,13 @@ class ShareLink(Base):
 
 class EmailQueue(Base):
     __tablename__ = "email_queue"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        CheckConstraint(
+            "recipient_email LIKE '%_@__%.__%'",
+            name="valid_queue_email"
+        ),
+        {"extend_existing": True},
+    )
 
     id = Column(GUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -428,6 +447,12 @@ class EmailQueue(Base):
     error_message = Column(Text, nullable=True)
     status = Column(String(50), default="pending", index=True)
     retry_count = Column(Integer, default=0)
+
+    @validates('recipient_email')
+    def validate_recipient_email(self, key, address):
+        if not address or "@" not in address or "." not in address.split("@")[-1]:
+            raise ValueError("Invalid email address format")
+        return address
 
 
 # ── TasteDriftSnapshot ───────────────────────────────────────────────────────

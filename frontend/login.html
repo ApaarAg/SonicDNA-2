@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | SonicDNA</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#050505',
+            indigo: '#4F46E5',
+            violet: '#8B5CF6',
+            pink: '#EC4899',
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Instrument Serif', 'serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      background-color: #050505;
+      color: #ffffff;
+      margin: 0;
+      overflow: hidden;
+    }
+    
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    
+    .aurora {
+      background: radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.2), rgba(236, 72, 153, 0.15), transparent 60%);
+      animation: pulse 10s ease-in-out infinite alternate;
+    }
+    
+    @keyframes pulse {
+      0% { transform: scale(1) translate(0, 0); opacity: 0.5; }
+      100% { transform: scale(1.1) translate(2%, 2%); opacity: 0.8; }
+    }
+    
+    .magnetic:hover {
+      transform: scale(1.02);
+      transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center relative font-sans">
+  <!-- Background Animation -->
+  <div class="aurora absolute inset-0 pointer-events-none"></div>
+  <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-30 pointer-events-none mix-blend-overlay"></div>
+  
+  <!-- Login Container -->
+  <div class="glass-panel relative z-10 w-full max-w-md mx-4 p-10 md:p-12 rounded-[32px] flex flex-col items-center text-center">
+    
+    <div class="mb-8">
+      <div class="w-16 h-16 rounded-full bg-gradient-to-br from-indigo to-pink flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(236,72,153,0.3)]">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" class="opacity-90">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+      </div>
+    </div>
+    
+    <h1 class="font-display text-4xl md:text-5xl mb-3 tracking-tight">SonicDNA</h1>
+    <p class="text-white/60 text-sm md:text-base leading-relaxed mb-10 max-w-xs">
+      Discover the hidden identity encoded inside every song you've ever loved.
+    </p>
+    
+    <button id="auth-btn" class="magnetic group w-full relative flex items-center justify-center gap-3 rounded-full bg-white text-ink px-6 py-4 font-medium transition-all hover:bg-white/90">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z"/>
+      </svg>
+      <span class="tracking-wide text-sm">Continue with Spotify</span>
+    </button>
+    
+    <div class="mt-8 flex items-center justify-center gap-4 text-white/40">
+      <span class="block w-8 h-px bg-white/20"></span>
+      <span class="font-mono text-[10px] tracking-[0.2em] uppercase">or</span>
+      <span class="block w-8 h-px bg-white/20"></span>
+    </div>
+    
+    <button id="guest-btn" class="mt-6 font-mono text-[11px] tracking-[0.1em] text-white/50 hover:text-white transition-colors">
+      ENTER AS GUEST
+    </button>
+  </div>
+  
+  <script>
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+    const API_URL = isLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+    
+    // Check if already authenticated
+    const urlParams = new URLSearchParams(window.location.search);
+    let sessionToken = urlParams.get('session_token') || localStorage.getItem('sonic_session');
+    
+    if (sessionToken && !urlParams.has('logout')) {
+      // Validate session via backend (or just redirect and let index.html handle it)
+      window.location.href = `index.html?session_token=${encodeURIComponent(sessionToken)}`;
+    }
+    
+    if (urlParams.has('logout')) {
+      localStorage.removeItem('sonic_session');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
+    document.getElementById('auth-btn').addEventListener('click', () => {
+      const returnTo = window.location.origin + '/index.html';
+      const token = localStorage.getItem('sonic_session') || '';
+      const tokenParam = token ? `session_token=${encodeURIComponent(token)}&` : '';
+      
+      const btn = document.getElementById('auth-btn');
+      btn.innerHTML = `<span class="tracking-wide text-sm">Connecting...</span>`;
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      
+      window.location.href = `${API_URL}/auth/login?${tokenParam}return_to=${encodeURIComponent(returnTo)}`;
+    });
+    
+    document.getElementById('guest-btn').addEventListener('click', () => {
+      window.location.href = 'index.html?guest=true';
+    });
+  </script>
+</body>
+</html>

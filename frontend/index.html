@@ -962,7 +962,8 @@ You."></h2>
 
   <script>
     (function(){
-      const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+      const API_URL = isLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
       const REGION_THEMES = {
         japan: {
@@ -3085,10 +3086,28 @@ as you."></h2>
       const list = document.getElementById('pl-tracks');
       let generating = false;
 
+      if (!window.playlistAudio) {
+        window.playlistAudio = new Audio();
+      }
+      window.playPlaylistPreview = function(url, el) {
+        if (!url) return;
+        if (window.playlistAudio.src === url && !window.playlistAudio.paused) {
+          window.playlistAudio.pause();
+          el.innerHTML = '▶';
+          return;
+        }
+        document.querySelectorAll('.pl-play-btn').forEach(b => b.innerHTML = '▶');
+        window.playlistAudio.src = url;
+        window.playlistAudio.play().then(() => {
+          el.innerHTML = '⏸';
+        }).catch(err => console.warn("Audio play blocked", err));
+      };
+
       function renderTrackList(items) {
         list.innerHTML = items.map((t,i)=>`
           <li class="flex items-center gap-3 text-sm">
             <span class="mono text-[10px] text-white/40 w-5 tabular-nums">${(i+1).toString().padStart(2,'0')}</span>
+            ${t.preview ? `<button onclick="window.playPlaylistPreview('${t.preview}', this)" class="pl-play-btn w-6 h-6 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/80 transition">▶</button>` : ''}
             <span class="truncate flex-1">${t.t} <span class="text-white/45">— ${t.a}</span></span>
             <span class="mono text-[10px] text-white/40 tabular-nums">${t.len}</span>
           </li>
@@ -3129,7 +3148,7 @@ as you."></h2>
         try {
           const result = await api('GET', `/recommendations/${sonicState.user_id}`);
           if (result.tracks && result.tracks.length > 0) {
-             const items = result.tracks.map(t => ({ t: t.title, a: t.artist, len: '3:00' }));
+             const items = result.tracks.map(t => ({ t: t.title, a: t.artist, len: '3:00', preview: t.preview_url }));
              sonicState.playlistTracks = items;
              renderTrackList(items);
           }
@@ -4918,6 +4937,10 @@ listen with you."></h2>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>
               <span class="label">Post to X</span>
             </button>
+            <button data-share="instagram" class="share-btn magnetic flex items-center gap-2 justify-center rounded-full border border-white/15 bg-white/[0.04] py-3 text-sm hover:bg-white/[0.08]">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+              <span class="label">Instagram</span>
+            </button>
             <button data-share="copy" class="share-btn magnetic flex items-center gap-2 justify-center rounded-full border border-white/15 bg-white/[0.04] py-3 text-sm hover:bg-white/[0.08]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span class="label" id="copy-label">Copy link</span>
@@ -6001,7 +6024,8 @@ in the songs."></h2>
   'use strict';
 
   /* ── 1. API BASE & FETCH HELPER ───────────────────────────────────────── */
-  const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+  const isApiLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+  const API = isApiLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
   async function api(method, path, body) {
     try {
@@ -6021,6 +6045,7 @@ in the songs."></h2>
       throw e;
     }
   }
+  window.api = api;
 
   /* ── 2. SESSION STATE ─────────────────────────────────────────────────── */
   window.sonicState = {
@@ -6090,6 +6115,13 @@ in the songs."></h2>
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('session_token');
+      const isGuest = urlParams.get('guest');
+      const storedToken = localStorage.getItem('sonic_session');
+      
+      if (!urlToken && !storedToken && !isGuest) {
+        window.location.href = 'login.html';
+        return;
+      }
       const spotifyStatus = urlParams.get('spotify');
       if (urlToken) {
         localStorage.setItem('sonic_session', urlToken);
@@ -6991,6 +7023,20 @@ in the songs."></h2>
             const r = window.__sonicReading || {};
             const text = `I just discovered my Sonic DNA — I'm ${r.primary || 'The Midnight Drifter'} with a ${r.shadow || 'Quiet Storm'} shadow. Take the 90-second calibration: ${shareLink} #SonicDNA`;
             window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+          } else if (k === 'instagram') {
+            const r = window.__sonicReading || {};
+            const text = `I'm ${r.primary || 'The Midnight Drifter'} according to SonicDNA! Check out yours: ${shareLink}`;
+            if (navigator.share) {
+              navigator.share({
+                title: 'SonicDNA',
+                text: text,
+                url: shareLink
+              }).catch(console.error);
+            } else {
+              navigator.clipboard.writeText(text).then(() => {
+                showToast('Text copied! Paste it in your Instagram bio or story.');
+              });
+            }
           } else {
             showToast(`Opening ${k.charAt(0).toUpperCase()+k.slice(1)} composer…`);
           }
