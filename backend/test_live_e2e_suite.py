@@ -5,7 +5,7 @@ import urllib.request
 import urllib.parse
 import pytest
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("SONICDNA_TEST_URL", "http://127.0.0.1:8000").rstrip("/")
 
 def request_json(method: str, path: str, data: dict = None, headers: dict = None):
     url = f"{BASE_URL}{path}"
