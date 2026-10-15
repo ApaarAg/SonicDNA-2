@@ -541,6 +541,27 @@ def analyze_clips_ratings(clip_ratings) -> dict:
     return _build_profile_from_genome(raw_genome, "audio_clips", extra)
 
 
+def _heuristic_text_genome(answers: list) -> dict:
+    text = " ".join(answers).lower()
+    danceability = 0.5 if any(w in text for w in ["dance", "groove", "rhythm", "beat", "party", "bounce"]) else (-0.3 if any(w in text for w in ["slow", "still", "ambient", "calm"]) else 0.0)
+    energy = 0.8 if any(w in text for w in ["rock", "metal", "fast", "loud", "hype", "intense", "heavy"]) else (-0.7 if any(w in text for w in ["sleep", "quiet", "soft", "rain", "whisper", "night", "alone"]) else 0.1)
+    valence = 0.6 if any(w in text for w in ["happy", "joy", "sun", "light", "love", "warm", "hope"]) else (-0.7 if any(w in text for w in ["sad", "dark", "cry", "pain", "loss", "grief", "depress", "lonely", "melanchol"]) else 0.0)
+    acousticness = 0.9 if any(w in text for w in ["acoustic", "guitar", "folk", "piano", "raw", "wood", "unplugged"]) else (-0.8 if any(w in text for w in ["synth", "electronic", "bass", "techno", "edm", "auto"]) else 0.0)
+    instrumentalness = 1.0 if any(w in text for w in ["instrumental", "wordless", "ambient", "soundscape", "drone", "score"]) else (-0.5 if any(w in text for w in ["lyrics", "sing", "words", "voice", "rap", "story"]) else 0.1)
+    speechiness = 0.9 if any(w in text for w in ["rap", "hip hop", "spoken", "bars", "verse", "rhyme"]) else -0.5
+    tempo = 0.6 if energy > 0.3 else (-0.5 if energy < -0.3 else 0.0)
+    return {
+        "danceability": danceability,
+        "energy": energy,
+        "valence": valence,
+        "acousticness": acousticness,
+        "instrumentalness": instrumentalness,
+        "speechiness": speechiness,
+        "tempo": tempo,
+        "reasoning": "Decoded musical genome from personal reflections."
+    }
+
+
 def analyze_open_questions(q1: str, q2: str, q3: str) -> dict:
     """
     Use Groq AI to extract a musical genome from 3 open-ended text answers.
@@ -568,25 +589,32 @@ Return ONLY a valid JSON object with exactly these keys and float values from -2
 
 No markdown, no extra text. Just the JSON."""
 
-    message = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    raw_text = message.choices[0].message.content.strip()
-
-    if raw_text == "INVALID_INPUT":
-        raise ValueError("INVALID_INPUT")
-
+    groq_model = _os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+    genome_data = None
     try:
-        genome_data = _json.loads(raw_text)
-    except _json.JSONDecodeError:
-        match = _re.search(r'\{.*\}', raw_text, _re.DOTALL)
-        if match:
-            genome_data = _json.loads(match.group())
-        else:
-            raise ValueError(f"Groq returned invalid JSON: {raw_text[:300]}")
+        message = client.chat.completions.create(
+            model=groq_model,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=10.0,
+        )
+        raw_text = message.choices[0].message.content.strip()
+        if raw_text == "INVALID_INPUT":
+            raise ValueError("INVALID_INPUT")
+        try:
+            genome_data = _json.loads(raw_text)
+        except _json.JSONDecodeError:
+            match = _re.search(r'\{.*\}', raw_text, _re.DOTALL)
+            if match:
+                genome_data = _json.loads(match.group())
+    except Exception as exc:
+        if str(exc) == "INVALID_INPUT":
+            raise
+        print(f"[groq.warn] Groq analysis fallback ({groq_model}): {exc}")
+        genome_data = _heuristic_text_genome([q1, q2, q3])
+
+    if not genome_data:
+        genome_data = _heuristic_text_genome([q1, q2, q3])
 
     reasoning = genome_data.pop("reasoning", "Your musical genome has been decoded.")
 

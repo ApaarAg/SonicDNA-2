@@ -84,22 +84,79 @@ def resolve_database_url() -> str:
     return raw
 
 
+DATABASE_IS_FALLBACK: bool = False
+DATABASE_FALLBACK_REASON: Optional[str] = None
+DATABASE_DIALECT: str = "unknown"
+DATABASE_CONNECTED: bool = False
+
+
+def get_database_status() -> dict:
+    is_prod = (os.getenv("SONICDNA_ENV") or "").lower() in {"production", "prod"}
+    persistent = (not DATABASE_IS_FALLBACK) or bool(os.getenv("SONICDNA_ALLOW_SQLITE_PERSISTENCE"))
+    return {
+        "connected": DATABASE_CONNECTED,
+        "dialect": DATABASE_DIALECT,
+        "fallback_active": DATABASE_IS_FALLBACK,
+        "fallback_reason": DATABASE_FALLBACK_REASON,
+        "persistent_storage": persistent,
+        "environment": "production" if is_prod else "development",
+    }
+
+
 DATABASE_URL = resolve_database_url()
 
 # ── SQLAlchemy Engine & Session Configuration ────────────────────────────────
-_engine_kwargs: Dict[str, Any] = {
-    "echo": False,
-    "pool_pre_ping": True,
-}
+def _init_resilient_engine(url: str) -> tuple[Any, str]:
+    global DATABASE_IS_FALLBACK, DATABASE_FALLBACK_REASON, DATABASE_DIALECT, DATABASE_CONNECTED
+    kwargs: Dict[str, Any] = {
+        "echo": False,
+        "pool_pre_ping": True,
+    }
+    fallback_path = Path(__file__).parent / "sonic_dna_dev.db"
+    fallback_url = f"sqlite:///{fallback_path.as_posix()}"
 
-if not DATABASE_URL.startswith("sqlite"):
-    _engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_recycle": 300,
-    })
+    if not url.startswith("sqlite"):
+        kwargs.update({
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_recycle": 300,
+        })
+        try:
+            test_engine = create_engine(url, **kwargs)
+            with test_engine.connect():
+                pass
+            DATABASE_CONNECTED = True
+            DATABASE_DIALECT = test_engine.dialect.name
+            DATABASE_IS_FALLBACK = False
+            return test_engine, url
+        except Exception as exc:
+            DATABASE_CONNECTED = False
+            DATABASE_IS_FALLBACK = True
+            DATABASE_FALLBACK_REASON = str(exc)
+            DATABASE_DIALECT = "sqlite"
+            is_prod = (os.getenv("SONICDNA_ENV") or "").lower() in {"production", "prod"}
+            allow_sqlite = os.getenv("SONICDNA_ALLOW_SQLITE_PERSISTENCE", "").lower() in {"1", "true", "yes"}
+            if is_prod and not allow_sqlite:
+                print(f"[database.error] Production database unreachable: {exc}. Ephemeral SQLite fallback is active in degraded mode.")
+            else:
+                print(f"[database.warn] Database connection failed: {exc}. Using SQLite ({fallback_url})")
 
-engine = create_engine(DATABASE_URL, **_engine_kwargs)
+            return create_engine(
+                fallback_url,
+                connect_args={"check_same_thread": False},
+                pool_pre_ping=True,
+            ), fallback_url
+    else:
+        DATABASE_CONNECTED = True
+        DATABASE_DIALECT = "sqlite"
+        DATABASE_IS_FALLBACK = False
+        return create_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            pool_pre_ping=True,
+        ), url
+
+engine, DATABASE_URL = _init_resilient_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -1207,7 +1264,7 @@ def save_genome_comparison(
             snapshot_b_id=snapshot_b_id,
             overall_similarity=comparison_result.get("overall_similarity"),
             genome_similarity=comparison_result.get("genome_similarity"),
-            archetype_match=comparison_result.get("archetype_match"),
+            archetype_match=bool(comparison_result.get("archetype_match")) if comparison_result.get("archetype_match") is not None else False,
             shared_genres=json.dumps(comparison_result.get("shared_genres", [])),
             unique_to_a=json.dumps(comparison_result.get("unique_to_a", [])),
             unique_to_b=json.dumps(comparison_result.get("unique_to_b", [])),

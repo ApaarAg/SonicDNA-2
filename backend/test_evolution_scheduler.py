@@ -3,11 +3,12 @@ import json
 import uuid
 from datetime import datetime, timedelta
 
-from app_database import SessionLocal, User, GenomeSnapshot, EmailQueue
+from app_database import SessionLocal, User, GenomeSnapshot, EmailQueue, migrate_database
 from genome_evolution import get_timeline
 from email_scheduler import trigger_recalibration_reminders
 
 def run_test():
+    migrate_database()
     with SessionLocal() as db:
         # 1. Clear any existing user with this email
         email = "almoraashok@gmail.com"

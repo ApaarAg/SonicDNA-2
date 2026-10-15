@@ -105,7 +105,7 @@
   </div>
   
   <script>
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+    const isLocal = !window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.') || window.location.protocol === 'file:';
     const API_URL = isLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
     
     // Check if already authenticated

@@ -73,7 +73,7 @@ def test_spotify_callback_rejects_first_connection_without_refresh_token(monkeyp
     saved = []
     monkeypatch.setattr(main.spotify_oauth, "parse_state", lambda state: {"session_token": "valid-session", "return_to": "http://127.0.0.1:3000"})
     monkeypatch.setattr(main, "resolve_session_token", lambda token: "user-1" if token == "valid-session" else None)
-    monkeypatch.setattr(main.spotify_oauth, "exchange_code", lambda code: {"access_token": "access-only", "expires_in": 3600})
+    monkeypatch.setattr(main.spotify_oauth, "exchange_code", lambda code, *args, **kwargs: {"access_token": "access-only", "expires_in": 3600})
     monkeypatch.setattr(main.spotify_oauth, "get_current_user", lambda access_token: {"id": "sp-user", "display_name": "Listener"})
     monkeypatch.setattr(main, "get_spotify_connection", lambda user_id: None)
     monkeypatch.setattr(main, "save_spotify_connection", lambda **kwargs: saved.append(kwargs))

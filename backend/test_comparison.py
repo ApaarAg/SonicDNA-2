@@ -2,13 +2,14 @@ import os
 import uuid
 import json
 from datetime import datetime
-from app_database import SessionLocal, User, GenomeSnapshot
+from app_database import SessionLocal, User, GenomeSnapshot, migrate_database
 from main import app
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
 def test_comparison():
+    migrate_database()
     with SessionLocal() as db:
         u1_id = str(uuid.uuid4())
         u2_id = str(uuid.uuid4())

@@ -111,6 +111,8 @@ class GeminiService:
         self,
         answers: List[str],
         clip_ratings: Optional[List[dict]] = None,
+        user_id: Optional[str] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Extract a clinical Big Five (OCEAN) personality profile, 7-factor genome vector,

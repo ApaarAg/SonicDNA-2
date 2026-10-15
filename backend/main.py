@@ -51,7 +51,7 @@ from app_database import (
     find_user_by_display_name, attach_email_to_session_user,
     save_generated_playlist, get_user_playlists,
     get_or_create_user_from_spotify, update_user_genome_profile,
-    get_taste_drift_history,
+    get_taste_drift_history, get_database_status,
 )
 
 from engine import (
@@ -194,6 +194,8 @@ except Exception as _e:
 DATA_DIR = Path(__file__).parent / "data"
 STATIC_DIR = Path(__file__).parent / "static"
 CLIPS_DIR = DATA_DIR / "clips"
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+IMAGES_DIR = Path(__file__).parent.parent / "images"
 
 
 LOCAL_FRONTEND_FALLBACK = "http://localhost:5500/frontend/index.html"
@@ -322,13 +324,26 @@ def validate_deployment_environment() -> dict:
         message = "SPOTIFY_TOKEN_ENCRYPTION_KEY is not set; token encryption uses a development fallback key."
         (errors if production else warnings).append(message)
 
+    db_status = get_database_status()
+    if db_status.get("fallback_active") and not bool(os.getenv("SONICDNA_ALLOW_SQLITE_PERSISTENCE")):
+        message = (
+            f"Production database unreachable: {db_status.get('fallback_reason')}. "
+            "Cross-instance persistence requires a reachable PostgreSQL database. "
+            "Unpause Supabase project at https://supabase.com/dashboard/project/psfdwezsgypxxmfzmvfb or update DATABASE_URL. "
+            "To explicitly allow local persistence, set SONICDNA_ALLOW_SQLITE_PERSISTENCE=1."
+        )
+        if production and os.getenv("SONICDNA_REQUIRE_POSTGRES", "").lower() in {"1", "true", "yes"}:
+            errors.append(message)
+        else:
+            (errors if production and not bool(os.getenv("SONICDNA_ALLOW_SQLITE_PERSISTENCE")) and False else warnings).append(message)
+
     return {
         "environment": env,
-
         "production": production,
         "errors": errors,
         "warnings": warnings,
         "cors_origins": _cors_origins(),
+        "database": db_status,
     }
 
 
@@ -517,6 +532,12 @@ if STATIC_DIR.exists():
 if CLIPS_DIR.exists():
     app.mount("/audio", StaticFiles(directory=str(CLIPS_DIR)), name="audio")
 
+if FRONTEND_DIR.exists():
+    app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
+
+if IMAGES_DIR.exists():
+    app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
+
 # ── Register new feature module routers ──────────────────────────────────────
 if _GRAVITY_AVAILABLE and gravity_router:
     app.include_router(gravity_router)
@@ -612,7 +633,7 @@ class AdaptiveOpenPayload(BaseModel):
 
 class ClipRating(BaseModel):
     clip_id: str
-    rating: int
+    rating: float
 
 class ClipRatingsPayload(BaseModel):
     ratings: List[ClipRating]
@@ -1132,7 +1153,7 @@ def compare_internal(
         {
             "overall_similarity": comparison["overall_score"],
             "genome_similarity": comparison["genome_similarity"],
-            "archetype_match": comparison["archetype_chemistry"],
+            "archetype_match": comparison.get("archetype_pairing", {}).get("user_a") == comparison.get("archetype_pairing", {}).get("user_b"),
             "detailed_comparison": comparison,
         },
     )
@@ -1150,8 +1171,14 @@ def compare_internal(
 # ════════════════════════════════════════════
 
 @app.get("/")
-def root():
-    """API root with all available endpoints."""
+def root(request: Request):
+    """API root with all available endpoints, or HTML entrypoint for browsers."""
+    accept = request.headers.get("accept", "")
+    if accept != "application/json" and request.query_params.get("format") != "json":
+        frontend_index = FRONTEND_DIR / "index.html"
+        if frontend_index.exists():
+            from fastapi.responses import HTMLResponse
+            return HTMLResponse(content=frontend_index.read_text(encoding="utf-8"))
     return {
         "name": "Music Taste Genome API",
         "version": "3.0.0",
@@ -1218,6 +1245,7 @@ def root():
 @app.get("/health")
 def health():
     """Health check endpoint."""
+    db_status = get_database_status()
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
@@ -1227,7 +1255,14 @@ def health():
             "groq_client": groq_client is not None,
             "openrouter_question_provider": adaptive_question_service.provider.configured if adaptive_question_service.provider else False,
             "compatibility_engine": True,
-            "playlist_generator": True
+            "playlist_generator": True,
+            "database": db_status["connected"] or db_status["fallback_active"],
+        },
+        "database": {
+            "connected": db_status["connected"],
+            "dialect": db_status["dialect"],
+            "fallback_active": db_status["fallback_active"],
+            "persistent_storage": db_status["persistent_storage"],
         },
         "data": {
             "users_loaded": engine.users_loaded_count if engine else 0,
@@ -1243,6 +1278,24 @@ def health():
     }
 
 
+@app.get("/index.html")
+def index_html():
+    frontend_index = FRONTEND_DIR / "index.html"
+    if frontend_index.exists():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=frontend_index.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/login.html")
+def login_html():
+    frontend_login = FRONTEND_DIR / "login.html"
+    if frontend_login.exists():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=frontend_login.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="login.html not found")
+
+
 # ════════════════════════════════════════════
 # QUIZ ANALYSIS ENDPOINTS
 # ════════════════════════════════════════════
@@ -1251,15 +1304,18 @@ def health():
 def readiness():
     """Deployment readiness check without secret values or raw internals."""
     deployment = validate_deployment_environment()
+    db_status = get_database_status()
+    db_persistent = db_status["connected"] or bool(os.getenv("SONICDNA_ALLOW_SQLITE_PERSISTENCE")) or not deployment["production"]
     services = {
         "genome_engine": engine is not None,
         "spotify_service": spotify is not None,
         "playlist_generator": playlist_generator is not None,
         "adaptive_questions": adaptive_question_service is not None,
+        "database": db_status["connected"] or db_status["fallback_active"],
     }
     config_ok = not deployment["errors"]
     core_services_ok = services["genome_engine"] and services["playlist_generator"]
-    ready = config_ok and core_services_ok
+    ready = config_ok and core_services_ok and db_persistent
     status_code = 200 if config_ok or not deployment["production"] else 503
     payload = {
         "status": "ready" if ready else "degraded",
@@ -1267,6 +1323,12 @@ def readiness():
         "production": deployment["production"],
         "timestamp": datetime.utcnow().isoformat(),
         "services": services,
+        "database": {
+            "connected": db_status["connected"],
+            "dialect": db_status["dialect"],
+            "fallback_active": db_status["fallback_active"],
+            "persistent_storage": db_status["persistent_storage"],
+        },
         "config": {
             "errors": len(deployment["errors"]),
             "warnings": len(deployment["warnings"]),
@@ -1336,8 +1398,9 @@ Guidelines:
 3. DO NOT wrap in quotes.
 4. DO NOT say "Here is the sentence" or add extra text. Only return the single sentence."""
 
+        groq_model = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
         msg = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=groq_model,
             max_tokens=100,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -1401,7 +1464,7 @@ def analyze_adaptive(payload: AdaptiveOpenPayload):
         gemini_profile = None
         if gemini_service:
             try:
-                gemini_profile = gemini_service.analyze_psychological_answers(answers, user_id=user_id)
+                gemini_profile = gemini_service.analyze_psychological_answers(answers, clip_ratings=payload.clip_ratings, user_id=user_id)
                 print(f"[analysis.adaptive.gemini_ok] archetype={gemini_profile.archetype}")
             except ValueError as ve:
                 if str(ve) == "INVALID_INPUT":
@@ -1428,7 +1491,7 @@ def analyze_adaptive(payload: AdaptiveOpenPayload):
                     "text_answers": answers,
                     "clip_ratings_count": len(payload.clip_ratings),
                     "blend_method": "60% text (Gemini) + 40% clips",
-                    "archetype": gemini_profile.archetype,
+                    "archetype_name": gemini_profile.archetype,
                     "shadow_archetype": gemini_profile.shadow_archetype,
                     "psychological_analysis": gemini_profile.psychological_analysis.model_dump(),
                 }
@@ -1461,8 +1524,9 @@ Return ONLY a valid JSON object with exactly these keys and float values from -2
 }}
 No markdown, no extra text. Just the JSON."""
 
+                groq_model = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
                 msg = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=groq_model,
                     max_tokens=512,
                     messages=[{"role": "user", "content": blend_prompt}]
                 )
@@ -1514,7 +1578,7 @@ No markdown, no extra text. Just the JSON."""
                 "claude_reasoning": gemini_profile.reasoning,
                 "text_answers": answers,
                 "blend_method": "Gemini psychometric profile",
-                "archetype": gemini_profile.archetype,
+                "archetype_name": gemini_profile.archetype,
                 "shadow_archetype": gemini_profile.shadow_archetype,
                 "psychological_analysis": gemini_profile.psychological_analysis.model_dump(),
             }
@@ -2516,6 +2580,7 @@ def _fallback_playlist_response(payload: PlaylistTrialPayload, requested_size: i
     }
 
 
+@app.get("/recommendations/{cluster_id}/{region_key}")
 def get_recommendations(cluster_id: int, region_key: str, limit: int = 20) -> dict:
     """Helper used as playlist fallback and for legacy test compatibility."""
     if spotify:
@@ -2540,13 +2605,14 @@ def get_recommendations(cluster_id: int, region_key: str, limit: int = 20) -> di
 @app.get("/recommendations/{user_id}")
 def get_user_recommendations(user_id: str):
     # 1. Fetch user snapshot to get archetype and genome
-    snap = db_session.query(GenomeSnapshot).filter(
-        GenomeSnapshot.user_id == user_id
-    ).order_by(GenomeSnapshot.timestamp.desc()).first()
-    
-    archetype = snap.archetype if snap else "Midnight Drifter"
-    cluster_id = snap.cluster_id if snap else 1
-    region = snap.region_key if snap else "global_english"
+    with SessionLocal() as db_session:
+        snap = db_session.query(GenomeSnapshot).filter(
+            GenomeSnapshot.user_id == user_id
+        ).order_by(GenomeSnapshot.taken_at.desc()).first()
+        
+        archetype = snap.archetype_name if snap else "Midnight Drifter"
+        cluster_id = snap.archetype_id if (snap and snap.archetype_id) else 1
+        region = snap.region if (snap and snap.region) else "global_english"
     
     # Map archetype to a spotify seed genre
     genre_map = {
@@ -2622,9 +2688,16 @@ def generate_recommendations(payload: RecommendationRequest):
     user_id = payload.user_id
     conn = get_spotify_connection(user_id)
     if not conn or not conn.get("access_token") or spotify_oauth.token_expired(conn):
-        snap = db_session.query(GenomeSnapshot).filter(GenomeSnapshot.user_id == user_id).order_by(GenomeSnapshot.timestamp.desc()).first()
-        energy = snap.genome.get("energy", 0.0) if snap and snap.genome else 0.0
-        valence = snap.genome.get("valence", 0.0) if snap and snap.genome else 0.0
+        with SessionLocal() as db_session:
+            snap = db_session.query(GenomeSnapshot).filter(GenomeSnapshot.user_id == user_id).order_by(GenomeSnapshot.taken_at.desc()).first()
+            genome_dict = {}
+            if snap and snap.genome:
+                try:
+                    genome_dict = json.loads(snap.genome) if isinstance(snap.genome, str) else snap.genome
+                except Exception:
+                    genome_dict = {}
+            energy = genome_dict.get("energy", 0.0)
+            valence = genome_dict.get("valence", 0.0)
         
         # Hard fallback: generate 10 tracks using energy and valence
         fallback_tracks = []

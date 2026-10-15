@@ -962,7 +962,7 @@ You."></h2>
 
   <script>
     (function(){
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+      const isLocal = !window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.') || window.location.protocol === 'file:';
       const API_URL = isLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
       const REGION_THEMES = {
@@ -1800,13 +1800,13 @@ You."></h2>
 
           // Dispatch the result to the main page integration
           window.__sonicReading = {
-            primary: result.archetype?.name || result.archetype_name || 'The Midnight Drifter',
-            shadow: result.dual_identity?.secondary_name || 'The Quiet Storm',
+            primary: (typeof result.archetype === 'string' ? result.archetype : result.archetype?.name) || result.archetype_name || 'The Midnight Drifter',
+            shadow: result.shadow_archetype || result.dual_identity?.secondary_archetype?.name || result.dual_identity?.secondary_name || 'The Quiet Storm',
             scores: normalizeGenomeFeatures(result.genome_features || {}),
-            cluster_id: result.cluster_id,
-            primary_pct: result.primary_pct || result.archetype?.primary_pct || 64,
+            cluster_id: result.cluster_id ?? 0,
+            primary_pct: result.primary_pct || result.dual_identity?.primary_pct || result.archetype?.primary_pct || 64,
             secondary_pct: result.secondary_pct || result.dual_identity?.secondary_pct || 31,
-            quote: result.archetype?.description || result.archetype?.tagline || 'You are the only person who hears what your library means.',
+            quote: (typeof result.archetype === 'object' ? (result.archetype?.description || result.archetype?.tagline) : null) || result.claude_reasoning || 'You are the only person who hears what your library means.',
             result: result,
           };
           window.dispatchEvent(new CustomEvent('sonic:reading', { detail: window.__sonicReading }));
@@ -3704,7 +3704,7 @@ were last winter."></h2>
       if (!userId) return;
 
       // Determine the API base (same origin as the page in prod; use env override if set).
-      const apiBase = window.SONIC_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : '');
+      const apiBase = window.SONIC_API_URL || (!window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '');
 
       try {
         const resp = await fetch(`${apiBase}/api/evolution/${encodeURIComponent(userId)}?limit=90`, {
@@ -4085,7 +4085,7 @@ the same universe."></h2>
         if (activeRequest) return;
         activeRequest = true;
         try {
-          const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+          const API = (!window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
           
           // Fetch stats
           const statsResp = await fetch(`${API}/social/stats`);
@@ -4764,7 +4764,7 @@ without a passport."></h2>
 
       async function fetchLiveAtlas() {
         try {
-          const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
+          const API = (!window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
           
           const flowsResp = await fetch(`${API}/atlas/flows?limit=30`);
           if (!flowsResp.ok) throw new Error("Backend flows error");
@@ -6024,7 +6024,7 @@ in the songs."></h2>
   'use strict';
 
   /* ── 1. API BASE & FETCH HELPER ───────────────────────────────────────── */
-  const isApiLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+  const isApiLocal = !window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.') || window.location.protocol === 'file:';
   const API = isApiLocal ? 'http://127.0.0.1:8000' : 'https://sonicdna-2.onrender.com';
 
   async function api(method, path, body) {
@@ -6117,11 +6117,7 @@ in the songs."></h2>
       const urlToken = urlParams.get('session_token');
       const isGuest = urlParams.get('guest');
       const storedToken = localStorage.getItem('sonic_session');
-      
-      if (!urlToken && !storedToken && !isGuest) {
-        window.location.href = 'login.html';
-        return;
-      }
+      // If no token exists, continue as guest by creating a session in boot() below
       const spotifyStatus = urlParams.get('spotify');
       if (urlToken) {
         localStorage.setItem('sonic_session', urlToken);
@@ -6249,7 +6245,7 @@ in the songs."></h2>
         api('POST', '/user/save_snapshot', {
           session_token: sonicState.session_token,
           result,
-          region: 'global_english',
+          region: window.journeyState?.selectedRegion || 'global_english',
         }).then(() => loadTimeline()).catch(console.warn);
       }
 
@@ -6281,7 +6277,7 @@ in the songs."></h2>
       const result = await api('POST', '/analyze_adaptive', {
         answers,
         clip_ratings: [],
-        region: 'global_english',
+        region: window.journeyState?.selectedRegion || 'global_english',
         session_token: sonicState.session_token,
       });
 
@@ -6293,13 +6289,13 @@ in the songs."></h2>
 
       // Build enriched reading object from backend
       const enrichedReading = {
-        primary: result.archetype?.name || result.archetype_name || clientReading.primary,
-        shadow: result.dual_identity?.secondary_name || clientReading.shadow,
+        primary: (typeof result.archetype === 'string' ? result.archetype : result.archetype?.name) || result.archetype_name || clientReading.primary,
+        shadow: result.shadow_archetype || result.dual_identity?.secondary_archetype?.name || result.dual_identity?.secondary_name || clientReading.shadow,
         scores: normalizeGenome(result.genome_features || {}),
-        cluster_id: result.cluster_id,
-        primary_pct: result.primary_pct || result.archetype?.primary_pct || 64,
+        cluster_id: result.cluster_id ?? 0,
+        primary_pct: result.primary_pct || result.dual_identity?.primary_pct || result.archetype?.primary_pct || 64,
         secondary_pct: result.secondary_pct || result.dual_identity?.secondary_pct || 31,
-        quote: result.archetype?.description || clientReading.quote,
+        quote: (typeof result.archetype === 'object' ? (result.archetype?.description || result.archetype?.tagline) : null) || result.claude_reasoning || clientReading.quote,
       };
       window.__sonicReading = enrichedReading;
 
@@ -6315,7 +6311,7 @@ in the songs."></h2>
         api('POST', '/user/save_snapshot', {
           session_token: sonicState.session_token,
           result,
-          region: 'global_english',
+          region: window.journeyState?.selectedRegion || 'global_english',
         }).then(() => loadTimeline()).catch(console.warn);
       }
 
@@ -7539,7 +7535,7 @@ in the songs."></h2>
         api('POST', '/user/save_snapshot', {
           session_token: data.session_token,
           result: sonicState.result,
-          region: 'global_english',
+          region: window.journeyState?.selectedRegion || 'global_english',
         }).catch(console.warn);
       }
     } catch (err) {
